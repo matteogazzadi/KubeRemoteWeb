@@ -23,9 +23,9 @@ npm start
 ## Build distributable
 
 ```bash
-npm run build:win    # Windows NSIS installer
-npm run build:mac    # macOS DMG
-npm run build:linux  # Linux AppImage
+npm run build:win    # Windows NSIS installer (.exe)
+npm run build:mac    # macOS DMG (.dmg)
+npm run build:linux  # Linux AppImage (.AppImage)
 ```
 
 ## Configuration
@@ -58,18 +58,25 @@ Config is stored at `~/.kuberemoteweb/config.json` (created automatically on fir
 
 ### Per-cluster settings
 
-Edit via the **⚙ Settings** panel inside the app.  
+Edit via the **⚙ Settings** panel inside the app.
 Changes to FQDN, SSL, or proxy require **Save & Restart** to take effect (those are Chromium command-line switches set at startup).
 
 ### FQDN auto-discovery
 
 Click **Discover** inside the settings panel to query `kubectl get ingress -A` on the selected context and populate the FQDN automatically.
 
+## Releasing
+
+Every PR merged into `main` automatically:
+1. Bumps the SemVer patch version (or minor/major via PR labels `bump:minor` / `bump:major`)
+2. Pushes a new git tag
+3. Triggers the release workflow → builds Win/Mac/Linux installers → publishes a GitHub Release
+
 ## Architecture notes
 
 | Concern | Solution |
 |---|---|
 | FQDN→127.0.0.1 mapping | `app.commandLine.appendSwitch('host-resolver-rules', 'MAP fqdn 127.0.0.1')` set before `app.ready` |
-| SSL cert errors on tunnel | `certificate-error` event handler on the BrowserView + optional `--ignore-certificate-errors` switch |
+| SSL cert errors on tunnel | `certificate-error` event handler on the BrowserView |
 | Per-cluster host rules | App relaunches (`app.relaunch()`) when cluster/FQDN changes so new switches take effect |
 | Proxy toggle | `--proxy-server` / `--no-proxy-server` switches applied at startup from saved config |
