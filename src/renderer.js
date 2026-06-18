@@ -18,6 +18,7 @@ const reloadBtn        = document.getElementById('reloadBtn');
 const goBtn            = document.getElementById('goBtn');
 const extBtn           = document.getElementById('extBtn');
 const emptyState       = document.getElementById('emptyState');
+const connectingState  = document.getElementById('connectingState');
 const settingsCtxLabel = document.getElementById('settingsCtxLabel');
 const discoverBtn      = document.getElementById('discoverBtn');
 const saveBtn          = document.getElementById('saveBtn');
@@ -26,6 +27,16 @@ const cancelBtn        = document.getElementById('cancelBtn');
 const saveDefaultsBtn  = document.getElementById('saveDefaultsBtn');
 const sfUseProxy       = document.getElementById('sfUseProxy');
 const proxyField       = document.getElementById('proxyField');
+
+// Status bar refs
+const sbDot        = document.getElementById('sbDot');
+const sbPfText     = document.getElementById('sbPfText');
+const sbUptimeWrap = document.getElementById('sbUptimeWrap');
+const sbUptime     = document.getElementById('sbUptime');
+const sbBwWrap     = document.getElementById('sbBwWrap');
+const sbSpeed      = document.getElementById('sbSpeed');
+const sbTotal      = document.getElementById('sbTotal');
+const sbCtxName    = document.getElementById('sbCtxName');
 
 // ── State ────────────────────────────────────────────────────────────────────
 let config         = null;
@@ -45,6 +56,25 @@ function toast(msg, type = '', duration = 3500) {
     el.style.opacity    = '0';
     setTimeout(() => el.remove(), 320);
   }, duration);
+}
+
+// ── Uptime formatter ──────────────────────────────────────────────────────────
+function fmtUptime(s) {
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return [h, m, sec].map((v) => String(v).padStart(2, '0')).join(':');
+}
+
+// ── Status bar update ─────────────────────────────────────────────────────────
+function updateStatusBar(status) {
+  sbDot.className = `sb-dot sb-dot-${status}`;
+  const labels = { stopped: 'Stopped', starting: 'Connecting…', running: 'Running', error: 'Error' };
+  sbPfText.textContent = `Port-forward: ${labels[status] || status}`;
+  const isRunning = status === 'running';
+  sbUptimeWrap.style.display = isRunning ? '' : 'none';
+  sbBwWrap.style.display     = isRunning ? '' : 'none';
+  if (!isRunning) { sbUptime.textContent = '00:00:00'; sbSpeed.textContent = '0 KB/s'; sbTotal.textContent = '0 B total'; }
 }
 
 // ── Config helpers ────────────────────────────────────────────────────────────
@@ -104,6 +134,24 @@ function collectClusterOverride(ctxName) {
   config.clusters[ctxName] = over;
 }
 
+// ── Auto-discover FQDN for a freshly selected cluster ────────────────────────
+async function autoDiscoverFqdn(ctxName) {
+  try {
+    const hosts = await kubeAPI.getIngressHosts(ctxName);
+    if (!hosts.length) return;
+    const fqdn = hosts[0];
+    if (!config.clusters)          config.clusters = {};
+    if (!config.clusters[ctxName]) config.clusters[ctxName] = {};
+    config.clusters[ctxName].fqdn     = fqdn;
+    config.clusters[ctxName].startUrl = `https://${fqdn}/web-app`;
+    await kubeAPI.saveConfig(config);
+    urlBar.value = config.clusters[ctxName].startUrl;
+    toast(`Auto-detected FQDN: ${fqdn}`, 'ok');
+  } catch (_) {
+    // Silent — user can discover manually via Settings
+  }
+}
+
 // ── Settings panel ────────────────────────────────────────────────────────────
 function openSettings() {
   settingsOpen = true;
@@ -127,6 +175,7 @@ async function navigateTo(rawUrl) {
   await kubeAPI.navigateBrowser(url);
   browserActive = true;
   emptyState.classList.add('hidden');
+  connectingState.classList.add('hidden');
   await kubeAPI.showBrowser(true);
 }
 
@@ -140,7 +189,15 @@ async function switchContext(ctxName) {
   await kubeAPI.showBrowser(false);
   browserActive = false;
   emptyState.classList.remove('hidden');
-  urlBar.value = effective(ctxName).startUrl || '';
+  connectingState.classList.add('hidden');
+  sbCtxName.textContent = ctxName || '—';
+
+  const eff = effective(ctxName);
+  urlBar.value = eff.startUrl || '';
+
+  // Auto-discover FQDN if not already configured for this cluster
+  if (!eff.fqdn) autoDiscoverFqdn(ctxName);
+
   toast(`Switched to: ${ctxName}`);
 }
 
@@ -167,6 +224,7 @@ async function loadContexts() {
     await kubeAPI.saveConfig(config);
   }
   urlBar.value = effective(activeCtx).startUrl || '';
+  sbCtxName.textContent = activeCtx || '—';
 }
 
 // ── Status update ─────────────────────────────────────────────────────────────
@@ -177,6 +235,17 @@ function applyStatus({ status, message }) {
 
   startBtn.disabled = (status === 'starting' || status === 'running');
   stopBtn.disabled  = (status === 'stopped'  || status === 'error');
+
+  // Connecting overlay
+  if (status === 'starting') {
+    connectingState.classList.remove('hidden');
+    emptyState.classList.add('hidden');
+  } else {
+    connectingState.classList.add('hidden');
+  }
+
+  // Bottom status bar
+  updateStatusBar(status);
 
   if (status === 'running') toast(message || 'Port-forward active', 'ok');
   if (status === 'error')   { toast(message || 'Port-forward error', 'err'); startBtn.disabled = false; }
@@ -204,6 +273,7 @@ stopBtn.addEventListener('click', async () => {
   await kubeAPI.showBrowser(false);
   browserActive = false;
   emptyState.classList.remove('hidden');
+  connectingState.classList.add('hidden');
 });
 
 settingsBtn.addEventListener('click', () => settingsOpen ? closeSettings() : openSettings());
@@ -252,7 +322,7 @@ discoverBtn.addEventListener('click', async () => {
     } else {
       document.getElementById('sfFqdn').value = hosts[0];
       if (!document.getElementById('sfStartUrl').value) {
-        document.getElementById('sfStartUrl').value = `https://${hosts[0]}`;
+        document.getElementById('sfStartUrl').value = `https://${hosts[0]}/web-app`;
       }
       if (hosts.length === 1) {
         toast(`FQDN discovered: ${hosts[0]}`, 'ok');
@@ -282,6 +352,11 @@ extBtn.addEventListener('click',   () => kubeAPI.openExternal(urlBar.value));
 // ── IPC listeners ─────────────────────────────────────────────────────────────
 kubeAPI.onPFStatus((data) => applyStatus(data));
 kubeAPI.onBrowserNav((url) => { urlBar.value = url; });
+kubeAPI.onPFStats(({ uptime, speedLabel, totalLabel }) => {
+  sbUptime.textContent = fmtUptime(uptime);
+  sbSpeed.textContent  = speedLabel;
+  sbTotal.textContent  = `${totalLabel} total`;
+});
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 async function init() {
@@ -289,6 +364,10 @@ async function init() {
   activeCtx = config.activeCluster;
   stopBtn.disabled = true;
   await loadContexts();
+  // Auto-discover FQDN for the initial context if not yet configured
+  if (activeCtx && !effective(activeCtx).fqdn) {
+    autoDiscoverFqdn(activeCtx);
+  }
 }
 
 init().catch(console.error);

@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('kubeAPI', {
   relaunchApp:      ()      => ipcRenderer.invoke('relaunch-app'),
   getPFStatus:      ()      => ipcRenderer.invoke('get-pf-status'),
 
-  onPFStatus:       (cb) => ipcRenderer.on('port-forward-status', (_e, d) => cb(d)),
-  onBrowserNav:     (cb) => ipcRenderer.on('browser-navigated',   (_e, u) => cb(u))
+  onPFStatus: (cb) => ipcRenderer.on('port-forward-status', (_e, d) => cb(d)),
+  onBrowserNav: (cb) => ipcRenderer.on('browser-navigated',   (_e, u) => cb(u)),
+  onPFStats:  (cb) => ipcRenderer.on('pf-stats',             (_e, s) => cb(s))
 });

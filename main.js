@@ -63,6 +63,7 @@ process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true';
 // ── State ───────────────────────────────────────────────────────────────────
 const TOOLBAR_HEIGHT = 100;
 const SETTINGS_WIDTH = 400;
+const STATUS_HEIGHT  = 28;
 
 let mainWindow         = null;
 let browserView        = null;
@@ -71,6 +72,51 @@ let portForwardStatus  = 'stopped';
 let currentConfig      = initialConfig;
 let settingsOpen       = false;
 let browserVisible     = false;
+
+// ── Bandwidth / stats tracking ───────────────────────────────────────────────
+let pfStartTime       = null;
+let pfBytesDown       = 0;
+let pfBytesWindow     = 0;  // bytes received in current 1-second window
+let pfKbps            = 0;
+let pfStatsInterval   = null;
+
+function formatBytes(b) {
+  if (b < 1024)        return `${b} B`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+  return `${(b / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function formatSpeed(kbps) {
+  if (kbps < 1000) return `${kbps} KB/s`;
+  return `${(kbps / 1000).toFixed(1)} MB/s`;
+}
+
+function startStatsTracking() {
+  pfStartTime   = Date.now();
+  pfBytesDown   = 0;
+  pfBytesWindow = 0;
+  pfKbps        = 0;
+  if (pfStatsInterval) clearInterval(pfStatsInterval);
+  pfStatsInterval = setInterval(() => {
+    pfKbps        = Math.round(pfBytesWindow * 8 / 1000);
+    pfBytesDown  += pfBytesWindow;
+    pfBytesWindow = 0;
+    const uptime  = Math.floor((Date.now() - pfStartTime) / 1000);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('pf-stats', {
+        uptime,
+        kbps:       pfKbps,
+        speedLabel: formatSpeed(pfKbps),
+        totalLabel: formatBytes(pfBytesDown)
+      });
+    }
+  }, 1000);
+}
+
+function stopStatsTracking() {
+  if (pfStatsInterval) { clearInterval(pfStatsInterval); pfStatsInterval = null; }
+  pfStartTime = null;
+}
 
 // ── kubectl helpers ──────────────────────────────────────────────────────────
 async function getKubeContexts() {
@@ -116,6 +162,8 @@ async function getIngressHosts(contextName) {
 // ── Port-forward ─────────────────────────────────────────────────────────────
 function sendStatus(status, message) {
   portForwardStatus = status;
+  if (status === 'running') startStatsTracking();
+  if (status === 'stopped' || status === 'error') stopStatsTracking();
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('port-forward-status', { status, message });
   }
@@ -175,7 +223,12 @@ function updateBrowserViewBounds() {
   }
   const x  = settingsOpen ? SETTINGS_WIDTH : 0;
   const bw = settingsOpen ? Math.max(0, w - SETTINGS_WIDTH) : w;
-  browserView.setBounds({ x, y: TOOLBAR_HEIGHT, width: bw, height: Math.max(0, h - TOOLBAR_HEIGHT) });
+  browserView.setBounds({
+    x,
+    y:      TOOLBAR_HEIGHT,
+    width:  bw,
+    height: Math.max(0, h - TOOLBAR_HEIGHT - STATUS_HEIGHT)
+  });
 }
 
 // ── Window creation ───────────────────────────────────────────────────────────
@@ -193,14 +246,25 @@ function createWindow() {
 
   browserView = new BrowserView({
     webPreferences: {
-      contextIsolation:          true,
-      nodeIntegration:           false,
+      contextIsolation:            true,
+      nodeIntegration:             false,
       allowRunningInsecureContent: true,
-      webSecurity:               false
+      webSecurity:                 false
     }
   });
 
   mainWindow.addBrowserView(browserView);
+
+  // Track download bytes for bandwidth stats
+  browserView.webContents.session.webRequest.onCompleted((details) => {
+    if (portForwardStatus !== 'running') return;
+    const cl = parseInt(
+      (details.responseHeaders || {})['content-length']?.[0] ||
+      (details.responseHeaders || {})['Content-Length']?.[0] || '0',
+      10
+    );
+    if (!isNaN(cl) && cl > 0) pfBytesWindow += cl;
+  });
 
   browserView.webContents.on('certificate-error', (event, _url, _err, _cert, callback) => {
     event.preventDefault();

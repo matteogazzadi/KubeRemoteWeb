@@ -92,7 +92,7 @@
       </div>
       <div class="field">
         <label>Start URL</label>
-        <input id="sfStartUrl" type="text" placeholder="https://my-cluster.example.com/app" />
+        <input id="sfStartUrl" type="text" placeholder="https://my-cluster.example.com/web-app" />
       </div>
       <label class="toggle-row">
         <input id="sfIgnoreSsl" type="checkbox" />
@@ -156,6 +156,39 @@
       <h2>KubeRemoteWeb</h2>
       <p>Select a Kubernetes cluster context, then click <strong>Start</strong>.</p>
       <p>The port-forward will be established and the embedded browser will open automatically.</p>
+    </div>
+  </div>
+
+  <!-- ── Connecting overlay ────────────────────────────────────────────── -->
+  <div id="connectingState" class="connecting-state hidden">
+    <div class="connecting-content">
+      <div class="connecting-icon">⎈</div>
+      <h2>Connecting&hellip;</h2>
+      <p>Establishing port-forward to cluster.<br>Please wait.</p>
+    </div>
+  </div>
+
+  <!-- ── Bottom status bar ─────────────────────────────────────────────── -->
+  <div id="statusBar" class="status-bar">
+    <div class="sb-item">
+      <span id="sbDot" class="sb-dot sb-dot-stopped"></span>
+      <span id="sbPfText">Port-forward: Stopped</span>
+    </div>
+    <div class="sb-sep-v"></div>
+    <div class="sb-item" id="sbUptimeWrap" style="display:none">
+      <span class="sb-label">⏱</span>
+      <span id="sbUptime">00:00:00</span>
+    </div>
+    <div class="sb-item" id="sbBwWrap" style="display:none">
+      <span class="sb-label">↓</span>
+      <span id="sbSpeed">0 KB/s</span>
+      <span class="sb-mid">·</span>
+      <span id="sbTotal">0 B total</span>
+    </div>
+    <div class="sb-spacer"></div>
+    <div class="sb-item">
+      <span class="sb-label">Context:</span>
+      <span id="sbCtxName">—</span>
     </div>
   </div>
 

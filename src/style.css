@@ -18,6 +18,7 @@
   --bar:  56px;
   --nav:  44px;
   --top:  100px;  /* --bar + --nav */
+  --sb:   28px;   /* status bar height */
   --sw:   400px;
   --rad:  7px;
 }
@@ -206,7 +207,7 @@ html, body {
   left: 0;
   top: var(--top);
   width: var(--sw);
-  height: calc(100vh - var(--top));
+  height: calc(100vh - var(--top) - var(--sb));
   background: var(--bg1);
   border-right: 1px solid var(--bdr);
   overflow-y: auto;
@@ -318,7 +319,8 @@ html, body {
 .empty-state {
   position: fixed;
   top: var(--top);
-  left: 0; right: 0; bottom: 0;
+  left: 0; right: 0;
+  bottom: var(--sb);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -350,10 +352,94 @@ html, body {
   margin-bottom: 8px;
 }
 
+/* ─── Connecting overlay ──────────────────────────────────────────────── */
+.connecting-state {
+  position: fixed;
+  top: var(--top);
+  left: 0; right: 0;
+  bottom: var(--sb);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  pointer-events: none;
+  background: rgba(15,15,26,.6);
+}
+.connecting-state.hidden { display: none; }
+
+.connecting-content {
+  text-align: center;
+  max-width: 440px;
+  padding: 40px;
+}
+.connecting-icon {
+  font-size: 72px;
+  color: var(--warn);
+  line-height: 1;
+  margin-bottom: 20px;
+  display: inline-block;
+  animation: spin 3s linear infinite;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.connecting-content h2 {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--warn);
+  margin-bottom: 14px;
+}
+.connecting-content p {
+  color: var(--txt2);
+  line-height: 1.65;
+}
+
+/* ─── Bottom status bar ───────────────────────────────────────────────── */
+.status-bar {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  height: var(--sb);
+  background: var(--bg1);
+  border-top: 1px solid var(--bdr);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 0;
+  font-size: 12px;
+  color: var(--txt2);
+  z-index: 300;
+  user-select: none;
+}
+.sb-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px;
+}
+.sb-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.sb-dot-stopped  { background: var(--muted); }
+.sb-dot-starting { background: var(--warn); animation: blink 1s ease-in-out infinite; }
+.sb-dot-running  { background: var(--ok); }
+.sb-dot-error    { background: var(--err); }
+.sb-label { color: var(--muted); }
+.sb-mid   { color: var(--muted); margin: 0 2px; }
+.sb-sep-v {
+  width: 1px;
+  height: 14px;
+  background: var(--bdr2);
+  margin: 0 4px;
+}
+.sb-spacer { flex: 1; }
+
 /* ─── Toasts ──────────────────────────────────────────────────────────── */
 .toast-container {
   position: fixed;
-  bottom: 20px;
+  bottom: calc(var(--sb) + 8px);
   right: 20px;
   z-index: 9999;
   display: flex;
