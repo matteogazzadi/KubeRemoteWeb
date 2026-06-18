@@ -1,0 +1,66 @@
+name: Release
+
+# Triggered by pushing a version tag: git tag v1.2.3 && git push origin v1.2.3
+on:
+  push:
+    tags:
+      - 'v[0-9]*'
+
+permissions:
+  contents: write   # needed to create GitHub Releases and upload assets
+
+jobs:
+  build:
+    name: Build & release (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            build_cmd:    npm run build:win
+            artifact_glob: dist/*.exe
+
+          - os: macos-latest
+            build_cmd:    npm run build:mac
+            artifact_glob: dist/*.dmg
+
+          - os: ubuntu-latest
+            build_cmd:    npm run build:linux
+            artifact_glob: dist/*.AppImage
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y libgtk-3-dev libnotify-dev libnss3 libxss1 libxtst6 xauth xvfb
+
+      - name: Build distributable
+        run: ${{ matrix.build_cmd }}
+        env:
+          # Skip code-signing on macOS (no certificate configured)
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Upload artifacts to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.artifact_glob }}
+          generate_release_notes: true
+          draft: false
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
