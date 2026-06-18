@@ -1,42 +1,28 @@
+const {
+  DEFAULT_CONFIG,
+  normalizeConfig,
+  getEffectiveClusterConfig,
+  buildPortForwardArgs,
+  buildHostResolverRules
+} = require('./src/config');
+
 const { app, BrowserWindow, BrowserView, ipcMain, shell } = require('electron');
 const { spawn, exec } = require('child_process');
 const { promisify } = require('util');
 const path = require('path');
-const fs = require('fs');
-const os = require('os');
+const fs   = require('fs');
+const os   = require('os');
 
 const execAsync = promisify(exec);
 
-// Config lives at ~/.kuberemoteweb/config.json so it can be read before app.ready
-const CONFIG_DIR = path.join(os.homedir(), '.kuberemoteweb');
+// Config lives at ~/.kuberemoteweb/config.json — readable before app.ready
+const CONFIG_DIR  = path.join(os.homedir(), '.kuberemoteweb');
 const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
-
-const DEFAULT_CONFIG = {
-  activeCluster: null,
-  defaults: {
-    service: 'svc/tp-ingress-controller',
-    namespace: 'tp-ingress-controller',
-    localPort: 443,
-    remotePort: 443,
-    fqdn: '',
-    startUrl: '',
-    ignoreSSLErrors: true,
-    useProxy: false,
-    proxyServer: ''
-  },
-  clusters: {}
-};
 
 function readConfig() {
   try {
     if (fs.existsSync(CONFIG_PATH)) {
-      const raw = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-      return {
-        ...DEFAULT_CONFIG,
-        ...raw,
-        defaults: { ...DEFAULT_CONFIG.defaults, ...(raw.defaults || {}) },
-        clusters: raw.clusters || {}
-      };
+      return normalizeConfig(JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')));
     }
   } catch (e) {
     console.error('Config read error:', e);
@@ -49,26 +35,20 @@ function writeConfig(cfg) {
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2), 'utf8');
 }
 
-function getEffectiveClusterConfig(cfg, contextName) {
-  const defaults = cfg.defaults || DEFAULT_CONFIG.defaults;
-  const override = (cfg.clusters || {})[contextName] || {};
-  return { ...defaults, ...override };
-}
-
-// ── Read config BEFORE app.ready to apply command-line switches ──────────────
-const initialConfig = readConfig();
+// ── Apply command-line switches BEFORE app.ready ────────────────────────────
+const initialConfig  = readConfig();
 const initialCluster = initialConfig.activeCluster;
 
 if (initialCluster) {
-  const cc = getEffectiveClusterConfig(initialConfig, initialCluster);
+  const cc    = getEffectiveClusterConfig(initialConfig, initialCluster);
+  const rules = buildHostResolverRules(initialConfig, initialCluster);
 
-  if (cc.fqdn) {
-    app.commandLine.appendSwitch('host-resolver-rules', `MAP ${cc.fqdn} 127.0.0.1`);
-    app.commandLine.appendSwitch('host-rules', `MAP ${cc.fqdn} 127.0.0.1`);
+  if (rules) {
+    app.commandLine.appendSwitch('host-resolver-rules', rules);
+    app.commandLine.appendSwitch('host-rules', rules);
   }
   if (cc.ignoreSSLErrors) {
     app.commandLine.appendSwitch('ignore-certificate-errors');
-    app.commandLine.appendSwitch('ignore-urlfetcher-cert-requests');
     app.commandLine.appendSwitch('allow-insecure-localhost');
   }
   if (cc.useProxy && cc.proxyServer) {
@@ -80,17 +60,17 @@ if (initialCluster) {
 
 process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true';
 
-// ── State ────────────────────────────────────────────────────────────────────
+// ── State ───────────────────────────────────────────────────────────────────
 const TOOLBAR_HEIGHT = 100;
 const SETTINGS_WIDTH = 400;
 
-let mainWindow = null;
-let browserView = null;
+let mainWindow         = null;
+let browserView        = null;
 let portForwardProcess = null;
-let portForwardStatus = 'stopped';
-let currentConfig = initialConfig;
-let settingsOpen = false;
-let browserVisible = false;
+let portForwardStatus  = 'stopped';
+let currentConfig      = initialConfig;
+let settingsOpen       = false;
+let browserVisible     = false;
 
 // ── kubectl helpers ──────────────────────────────────────────────────────────
 async function getKubeContexts() {
@@ -115,9 +95,18 @@ async function getCurrentKubeContext() {
 async function getIngressHosts(contextName) {
   try {
     const ctxFlag = contextName ? `--context=${contextName}` : '';
-    const cmd = `kubectl get ingress -A -o jsonpath="{range .items[*]}{range .spec.rules[*]}{.host}{\"\\n\"}{end}{end}" ${ctxFlag}`.trim();
-    const { stdout } = await execAsync(cmd, { timeout: 12000 });
-    return [...new Set(stdout.trim().split('\n').filter(Boolean))];
+    const { stdout } = await execAsync(
+      `kubectl get ingress -A -o json ${ctxFlag}`,
+      { timeout: 12000 }
+    );
+    const data  = JSON.parse(stdout);
+    const hosts = new Set();
+    for (const item of (data.items || [])) {
+      for (const rule of (item.spec?.rules || [])) {
+        if (rule.host) hosts.add(rule.host);
+      }
+    }
+    return [...hosts];
   } catch (e) {
     console.error('kubectl get ingress error:', e.message);
     return [];
@@ -135,17 +124,9 @@ function sendStatus(status, message) {
 function startPortForward(contextName) {
   if (portForwardProcess) stopPortForward();
 
-  const cc = getEffectiveClusterConfig(currentConfig, contextName);
-  const args = [
-    'port-forward',
-    '-n', cc.namespace,
-    cc.service,
-    `${cc.localPort}:${cc.remotePort}`,
-    `--context=${contextName}`
-  ];
-
-  console.log('[pf] starting:', 'kubectl', args.join(' '));
-  sendStatus('starting', `Starting: kubectl ${args.join(' ')}`);
+  const args = buildPortForwardArgs(currentConfig, contextName);
+  console.log('[pf] kubectl', args.join(' '));
+  sendStatus('starting', `kubectl ${args.join(' ')}`);
 
   portForwardProcess = spawn('kubectl', args, { stdio: ['ignore', 'pipe', 'pipe'] });
 
@@ -153,38 +134,34 @@ function startPortForward(contextName) {
     const msg = data.toString().trim();
     console.log('[pf stdout]', msg);
     if (msg.includes('Forwarding from')) {
-      sendStatus('running', `Active on port ${cc.localPort} → ${cc.remotePort}`);
+      const cc = getEffectiveClusterConfig(currentConfig, contextName);
+      sendStatus('running', `Active on ${cc.localPort} → ${cc.remotePort}`);
     }
   });
 
   portForwardProcess.stderr.on('data', (data) => {
     const msg = data.toString().trim();
     console.error('[pf stderr]', msg);
-    if (msg.includes('error') || msg.includes('Error')) {
-      sendStatus('error', msg.substring(0, 120));
-    }
+    if (/error/i.test(msg)) sendStatus('error', msg.substring(0, 140));
   });
 
   portForwardProcess.on('error', (err) => {
-    console.error('[pf] spawn error:', err);
-    sendStatus('error', `kubectl not found or failed: ${err.message}`);
+    console.error('[pf spawn error]', err);
+    sendStatus('error', `kubectl not found: ${err.message}`);
     portForwardProcess = null;
   });
 
   portForwardProcess.on('close', (code) => {
-    console.log('[pf] exited with code', code);
+    console.log('[pf] exited', code);
     portForwardProcess = null;
     if (portForwardStatus === 'running' || portForwardStatus === 'starting') {
-      sendStatus('error', `Port-forward stopped unexpectedly (exit ${code})`);
+      sendStatus('error', `Port-forward stopped (exit ${code})`);
     }
   });
 }
 
 function stopPortForward() {
-  if (portForwardProcess) {
-    portForwardProcess.kill();
-    portForwardProcess = null;
-  }
+  if (portForwardProcess) { portForwardProcess.kill(); portForwardProcess = null; }
   sendStatus('stopped', 'Port-forward stopped');
 }
 
@@ -196,7 +173,7 @@ function updateBrowserViewBounds() {
     browserView.setBounds({ x: 0, y: TOOLBAR_HEIGHT, width: 0, height: 0 });
     return;
   }
-  const x = settingsOpen ? SETTINGS_WIDTH : 0;
+  const x  = settingsOpen ? SETTINGS_WIDTH : 0;
   const bw = settingsOpen ? Math.max(0, w - SETTINGS_WIDTH) : w;
   browserView.setBounds({ x, y: TOOLBAR_HEIGHT, width: bw, height: Math.max(0, h - TOOLBAR_HEIGHT) });
 }
@@ -204,144 +181,81 @@ function updateBrowserViewBounds() {
 // ── Window creation ───────────────────────────────────────────────────────────
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
-    minWidth: 900,
-    minHeight: 600,
+    width: 1400, height: 900, minWidth: 900, minHeight: 600,
     title: 'KubeRemoteWeb',
     backgroundColor: '#0f0f1a',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration:  false
     }
   });
 
   browserView = new BrowserView({
     webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
+      contextIsolation:          true,
+      nodeIntegration:           false,
       allowRunningInsecureContent: true,
-      webSecurity: false
+      webSecurity:               false
     }
   });
 
   mainWindow.addBrowserView(browserView);
 
-  // Allow cert errors for tunnelled traffic
-  browserView.webContents.on('certificate-error', (event, url, error, cert, callback) => {
+  browserView.webContents.on('certificate-error', (event, _url, _err, _cert, callback) => {
     event.preventDefault();
     callback(true);
   });
 
-  browserView.webContents.on('did-navigate', (event, url) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
+  browserView.webContents.on('did-navigate', (_e, url) => {
+    if (mainWindow && !mainWindow.isDestroyed())
       mainWindow.webContents.send('browser-navigated', url);
-    }
   });
-
-  browserView.webContents.on('did-navigate-in-page', (event, url) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
+  browserView.webContents.on('did-navigate-in-page', (_e, url) => {
+    if (mainWindow && !mainWindow.isDestroyed())
       mainWindow.webContents.send('browser-navigated', url);
-    }
   });
 
   browserView.setBounds({ x: 0, y: TOOLBAR_HEIGHT, width: 0, height: 0 });
 
-  ['resize', 'maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen'].forEach((ev) => {
-    mainWindow.on(ev, () => setTimeout(updateBrowserViewBounds, 50));
-  });
+  ['resize','maximize','unmaximize','enter-full-screen','leave-full-screen'].forEach(
+    (ev) => mainWindow.on(ev, () => setTimeout(updateBrowserViewBounds, 50))
+  );
 
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
+  mainWindow.on('closed', () => { stopPortForward(); mainWindow = null; });
 
-  mainWindow.on('closed', () => {
-    stopPortForward();
-    mainWindow = null;
-  });
-
-  // Auto-detect current context on first run
   if (!currentConfig.activeCluster) {
     getCurrentKubeContext().then((ctx) => {
-      if (ctx) {
-        currentConfig.activeCluster = ctx;
-        writeConfig(currentConfig);
-      }
+      if (ctx) { currentConfig.activeCluster = ctx; writeConfig(currentConfig); }
     });
   }
 }
 
 // ── IPC handlers ─────────────────────────────────────────────────────────────
-ipcMain.handle('get-config', () => currentConfig);
+ipcMain.handle('get-config',          ()        => currentConfig);
+ipcMain.handle('save-config',         (_e, cfg) => { currentConfig = cfg; writeConfig(currentConfig); return true; });
+ipcMain.handle('get-kube-contexts',   ()        => getKubeContexts());
+ipcMain.handle('get-current-context', ()        => getCurrentKubeContext());
+ipcMain.handle('get-ingress-hosts',   (_e, ctx) => getIngressHosts(ctx));
+ipcMain.handle('start-port-forward',  (_e, ctx) => { startPortForward(ctx); return true; });
+ipcMain.handle('stop-port-forward',   ()        => { stopPortForward();      return true; });
 
-ipcMain.handle('save-config', (event, cfg) => {
-  currentConfig = cfg;
-  writeConfig(currentConfig);
-  return true;
-});
-
-ipcMain.handle('get-kube-contexts', () => getKubeContexts());
-ipcMain.handle('get-current-context', () => getCurrentKubeContext());
-ipcMain.handle('get-ingress-hosts', (event, ctx) => getIngressHosts(ctx));
-
-ipcMain.handle('start-port-forward', (event, ctx) => {
-  startPortForward(ctx);
-  return true;
-});
-
-ipcMain.handle('stop-port-forward', () => {
-  stopPortForward();
-  return true;
-});
-
-ipcMain.handle('navigate-browser', (event, url) => {
+ipcMain.handle('navigate-browser', (_e, url) => {
   if (browserView) browserView.webContents.loadURL(url);
   return true;
 });
+ipcMain.handle('browser-back',    () => browserView?.webContents.canGoBack()    && browserView.webContents.goBack());
+ipcMain.handle('browser-forward', () => browserView?.webContents.canGoForward() && browserView.webContents.goForward());
+ipcMain.handle('browser-reload',  () => browserView?.webContents.reload());
 
-ipcMain.handle('browser-back', () => {
-  if (browserView && browserView.webContents.canGoBack()) browserView.webContents.goBack();
-});
-
-ipcMain.handle('browser-forward', () => {
-  if (browserView && browserView.webContents.canGoForward()) browserView.webContents.goForward();
-});
-
-ipcMain.handle('browser-reload', () => {
-  if (browserView) browserView.webContents.reload();
-});
-
-ipcMain.handle('show-browser', (event, show) => {
-  browserVisible = show;
-  updateBrowserViewBounds();
-  return true;
-});
-
-ipcMain.handle('toggle-settings', (event, open) => {
-  settingsOpen = open;
-  updateBrowserViewBounds();
-  return true;
-});
-
-ipcMain.handle('open-external', (event, url) => {
-  shell.openExternal(url);
-});
-
-ipcMain.handle('relaunch-app', () => {
-  stopPortForward();
-  app.relaunch();
-  app.quit();
-});
-
-ipcMain.handle('get-pf-status', () => ({ status: portForwardStatus }));
+ipcMain.handle('show-browser',     (_e, show) => { browserVisible = show; updateBrowserViewBounds(); return true; });
+ipcMain.handle('toggle-settings',  (_e, open) => { settingsOpen   = open; updateBrowserViewBounds(); return true; });
+ipcMain.handle('open-external',    (_e, url)  => shell.openExternal(url));
+ipcMain.handle('relaunch-app',     ()         => { stopPortForward(); app.relaunch(); app.quit(); });
+ipcMain.handle('get-pf-status',    ()         => ({ status: portForwardStatus }));
 
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 app.whenReady().then(createWindow);
-
-app.on('window-all-closed', () => {
-  stopPortForward();
-  if (process.platform !== 'darwin') app.quit();
-});
-
-app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
-});
+app.on('window-all-closed', () => { stopPortForward(); if (process.platform !== 'darwin') app.quit(); });
+app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
