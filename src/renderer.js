@@ -1,7 +1,7 @@
 /* global kubeAPI */
 'use strict';
 
-// ── DOM refs ─────────────────────────────────────────────────────────────────
+// ── DOM refs ──────────────────────────────────────────────────────────────────
 const contextSelect    = document.getElementById('contextSelect');
 const refreshCtxBtn    = document.getElementById('refreshCtxBtn');
 const startBtn         = document.getElementById('startBtn');
@@ -26,14 +26,31 @@ const cancelBtn        = document.getElementById('cancelBtn');
 const saveDefaultsBtn  = document.getElementById('saveDefaultsBtn');
 const sfUseProxy       = document.getElementById('sfUseProxy');
 const proxyField       = document.getElementById('proxyField');
+const connectingState  = document.getElementById('connectingState');
+const themeBtn         = document.getElementById('themeBtn');
+const debugBtn         = document.getElementById('debugBtn');
+const debugPanel       = document.getElementById('debugPanel');
+const closeDebugBtn    = document.getElementById('closeDebugBtn');
+const debugLog         = document.getElementById('debugLog');
+const clearLogBtn      = document.getElementById('clearLogBtn');
+const appVersionEl     = document.getElementById('appVersion');
+const sbDot            = document.getElementById('sbDot');
+const sbPfText         = document.getElementById('sbPfText');
+const sbUptimeWrap     = document.getElementById('sbUptimeWrap');
+const sbBwWrap         = document.getElementById('sbBwWrap');
+const sbUptime         = document.getElementById('sbUptime');
+const sbSpeed          = document.getElementById('sbSpeed');
+const sbTotal          = document.getElementById('sbTotal');
+const sbCtxName        = document.getElementById('sbCtxName');
 
-// ── State ────────────────────────────────────────────────────────────────────
-let config         = null;
-let activeCtx      = null;
-let settingsOpen   = false;
-let browserActive  = false;
+// ── State ─────────────────────────────────────────────────────────────────────
+let config        = null;
+let activeCtx     = null;
+let settingsOpen  = false;
+let debugOpen     = false;
+let browserActive = false;
 
-// ── Toast ────────────────────────────────────────────────────────────────────
+// ── Toast ─────────────────────────────────────────────────────────────────────
 function toast(msg, type = '', duration = 3500) {
   const container = document.getElementById('toasts');
   const el = document.createElement('div');
@@ -45,6 +62,94 @@ function toast(msg, type = '', duration = 3500) {
     el.style.opacity    = '0';
     setTimeout(() => el.remove(), 320);
   }, duration);
+}
+
+// ── Theme ─────────────────────────────────────────────────────────────────────
+function applyTheme(theme) {
+  if (theme === 'light') {
+    document.body.classList.add('light-theme');
+    themeBtn.innerHTML = '&#9790;';
+    themeBtn.title = 'Switch to dark theme';
+  } else {
+    document.body.classList.remove('light-theme');
+    themeBtn.innerHTML = '&#9788;';
+    themeBtn.title = 'Switch to light theme';
+  }
+}
+
+function toggleTheme() {
+  const next = document.body.classList.contains('light-theme') ? 'dark' : 'light';
+  config.theme = next;
+  applyTheme(next);
+  kubeAPI.saveConfig(config).catch(() => {});
+}
+
+// ── Debug log panel ───────────────────────────────────────────────────────────
+function fmtLogTime(ts) {
+  return new Date(ts).toTimeString().slice(0, 8);
+}
+
+function appendLog(entry) {
+  const atBottom = debugLog.scrollHeight - debugLog.scrollTop - debugLog.clientHeight < 60;
+
+  const el = document.createElement('div');
+  el.className = 'log-entry';
+
+  const t = document.createElement('span');
+  t.className   = 'log-time';
+  t.textContent = fmtLogTime(entry.ts);
+
+  const b = document.createElement('span');
+  b.className   = `log-badge log-badge-${entry.level}`;
+  b.textContent = entry.level;
+
+  const m = document.createElement('span');
+  m.className   = 'log-text';
+  m.textContent = entry.text;
+
+  el.appendChild(t);
+  el.appendChild(b);
+  el.appendChild(m);
+  debugLog.appendChild(el);
+
+  if (atBottom) debugLog.scrollTop = debugLog.scrollHeight;
+}
+
+function openDebug() {
+  debugOpen = true;
+  debugPanel.classList.add('open');
+}
+
+function closeDebug() {
+  debugOpen = false;
+  debugPanel.classList.remove('open');
+}
+
+// ── Status bar ────────────────────────────────────────────────────────────────
+function fmtUptime(s) {
+  const h   = Math.floor(s / 3600);
+  const m   = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return [h, m, sec].map((v) => String(v).padStart(2, '0')).join(':');
+}
+
+function updateStatusBar(status) {
+  sbDot.className = `sb-dot sb-dot-${status}`;
+  const labels = {
+    stopped:  'Port-forward: Stopped',
+    starting: 'Port-forward: Starting…',
+    running:  'Port-forward: Running',
+    error:    'Port-forward: Error'
+  };
+  sbPfText.textContent          = labels[status] || `Port-forward: ${status}`;
+  sbCtxName.textContent         = activeCtx || '—';
+  sbUptimeWrap.style.display    = status === 'running' ? '' : 'none';
+  sbBwWrap.style.display        = status === 'running' ? '' : 'none';
+  if (status !== 'running') {
+    sbUptime.textContent = '00:00:00';
+    sbSpeed.textContent  = '0 KB/s';
+    sbTotal.textContent  = '0 B total';
+  }
 }
 
 // ── Config helpers ────────────────────────────────────────────────────────────
@@ -60,18 +165,17 @@ function populateSettingsForm(ctxName) {
 
   settingsCtxLabel.textContent = ctxName || '-';
 
-  document.getElementById('sfService').value   = over.service   || '';
-  document.getElementById('sfNamespace').value = over.namespace || '';
-  document.getElementById('sfLocalPort').value = over.localPort  != null ? over.localPort  : '';
-  document.getElementById('sfRemotePort').value= over.remotePort != null ? over.remotePort : '';
-  document.getElementById('sfFqdn').value      = over.fqdn      || eff.fqdn      || '';
-  document.getElementById('sfStartUrl').value  = over.startUrl  || eff.startUrl  || '';
+  document.getElementById('sfService').value    = over.service   || '';
+  document.getElementById('sfNamespace').value  = over.namespace || '';
+  document.getElementById('sfLocalPort').value  = over.localPort  != null ? over.localPort  : '';
+  document.getElementById('sfRemotePort').value = over.remotePort != null ? over.remotePort : '';
+  document.getElementById('sfFqdn').value       = over.fqdn      || eff.fqdn      || '';
+  document.getElementById('sfStartUrl').value   = over.startUrl  || eff.startUrl  || '';
   document.getElementById('sfIgnoreSsl').checked = over.ignoreSSLErrors != null ? over.ignoreSSLErrors : eff.ignoreSSLErrors;
   sfUseProxy.checked = over.useProxy != null ? over.useProxy : eff.useProxy;
-  document.getElementById('sfProxy').value     = over.proxyServer || eff.proxyServer || '';
+  document.getElementById('sfProxy').value      = over.proxyServer || eff.proxyServer || '';
   proxyField.style.display = sfUseProxy.checked ? '' : 'none';
 
-  // Defaults section
   document.getElementById('dfService').value    = config.defaults.service    || '';
   document.getElementById('dfNamespace').value  = config.defaults.namespace  || '';
   document.getElementById('dfLocalPort').value  = config.defaults.localPort  || '';
@@ -90,18 +194,34 @@ function collectClusterOverride(ctxName) {
   const psvr = document.getElementById('sfProxy').value.trim();
 
   const over = {};
-  if (svc)         over.service          = svc;
-  if (ns)          over.namespace        = ns;
-  if (!isNaN(lp) && lp > 0) over.localPort  = lp;
-  if (!isNaN(rp) && rp > 0) over.remotePort = rp;
-  if (fqdn)        over.fqdn             = fqdn;
-  if (url)         over.startUrl         = url;
+  if (svc)              over.service          = svc;
+  if (ns)               over.namespace        = ns;
+  if (!isNaN(lp) && lp > 0) over.localPort   = lp;
+  if (!isNaN(rp) && rp > 0) over.remotePort  = rp;
+  if (fqdn)             over.fqdn             = fqdn;
+  if (url)              over.startUrl         = url;
   over.ignoreSSLErrors = ssl;
   over.useProxy        = prx;
-  if (psvr)        over.proxyServer      = psvr;
+  if (psvr)             over.proxyServer      = psvr;
 
   if (!config.clusters) config.clusters = {};
   config.clusters[ctxName] = over;
+}
+
+// ── FQDN auto-discover ────────────────────────────────────────────────────────
+async function autoDiscoverFqdn(ctxName) {
+  try {
+    const hosts = await kubeAPI.getIngressHosts(ctxName);
+    if (!hosts.length) return;
+    const fqdn = hosts[0];
+    if (!config.clusters)          config.clusters          = {};
+    if (!config.clusters[ctxName]) config.clusters[ctxName] = {};
+    config.clusters[ctxName].fqdn     = fqdn;
+    config.clusters[ctxName].startUrl = `https://${fqdn}/web-app`;
+    await kubeAPI.saveConfig(config);
+    urlBar.value = config.clusters[ctxName].startUrl;
+    toast(`Auto-detected FQDN: ${fqdn}`, 'ok');
+  } catch (_) { /* silent */ }
 }
 
 // ── Settings panel ────────────────────────────────────────────────────────────
@@ -127,6 +247,7 @@ async function navigateTo(rawUrl) {
   await kubeAPI.navigateBrowser(url);
   browserActive = true;
   emptyState.classList.add('hidden');
+  connectingState.classList.add('hidden');
   await kubeAPI.showBrowser(true);
 }
 
@@ -140,8 +261,11 @@ async function switchContext(ctxName) {
   await kubeAPI.showBrowser(false);
   browserActive = false;
   emptyState.classList.remove('hidden');
+  connectingState.classList.add('hidden');
   urlBar.value = effective(ctxName).startUrl || '';
+  sbCtxName.textContent = ctxName;
   toast(`Switched to: ${ctxName}`);
+  if (!effective(ctxName).fqdn) autoDiscoverFqdn(ctxName);
 }
 
 // ── Populate context selector ─────────────────────────────────────────────────
@@ -172,11 +296,20 @@ async function loadContexts() {
 // ── Status update ─────────────────────────────────────────────────────────────
 function applyStatus({ status, message }) {
   statusBadge.className = `status-badge status-${status}`;
-  const labels = { stopped:'Stopped', starting:'Starting…', running:'Running', error:'Error' };
+  const labels = { stopped: 'Stopped', starting: 'Starting…', running: 'Running', error: 'Error' };
   statusText.textContent = labels[status] || status;
 
   startBtn.disabled = (status === 'starting' || status === 'running');
   stopBtn.disabled  = (status === 'stopped'  || status === 'error');
+
+  if (status === 'starting') {
+    connectingState.classList.remove('hidden');
+    emptyState.classList.add('hidden');
+  } else {
+    connectingState.classList.add('hidden');
+  }
+
+  updateStatusBar(status);
 
   if (status === 'running') toast(message || 'Port-forward active', 'ok');
   if (status === 'error')   { toast(message || 'Port-forward error', 'err'); startBtn.disabled = false; }
@@ -184,7 +317,6 @@ function applyStatus({ status, message }) {
 
 // ── Event wiring ──────────────────────────────────────────────────────────────
 contextSelect.addEventListener('change', (e) => switchContext(e.target.value));
-
 refreshCtxBtn.addEventListener('click', loadContexts);
 
 startBtn.addEventListener('click', async () => {
@@ -194,7 +326,6 @@ startBtn.addEventListener('click', async () => {
   const eff = effective(activeCtx);
   if (eff.startUrl) {
     urlBar.value = eff.startUrl;
-    // Give port-forward ~2 s to come up before auto-navigating
     setTimeout(() => navigateTo(eff.startUrl), 2000);
   }
 });
@@ -204,11 +335,17 @@ stopBtn.addEventListener('click', async () => {
   await kubeAPI.showBrowser(false);
   browserActive = false;
   emptyState.classList.remove('hidden');
+  connectingState.classList.add('hidden');
 });
 
 settingsBtn.addEventListener('click', () => settingsOpen ? closeSettings() : openSettings());
 closeSettingsBtn.addEventListener('click', closeSettings);
 cancelBtn.addEventListener('click', closeSettings);
+
+themeBtn.addEventListener('click', toggleTheme);
+debugBtn.addEventListener('click', () => debugOpen ? closeDebug() : openDebug());
+closeDebugBtn.addEventListener('click', closeDebug);
+clearLogBtn.addEventListener('click', () => { debugLog.innerHTML = ''; });
 
 saveBtn.addEventListener('click', async () => {
   if (!activeCtx) return;
@@ -254,11 +391,12 @@ discoverBtn.addEventListener('click', async () => {
       if (!document.getElementById('sfStartUrl').value) {
         document.getElementById('sfStartUrl').value = `https://${hosts[0]}`;
       }
-      if (hosts.length === 1) {
-        toast(`FQDN discovered: ${hosts[0]}`, 'ok');
-      } else {
-        toast(`Found ${hosts.length} hosts. Using first: ${hosts[0]}`, 'warn', 5000);
-      }
+      toast(hosts.length === 1
+        ? `FQDN discovered: ${hosts[0]}`
+        : `Found ${hosts.length} hosts. Using first: ${hosts[0]}`,
+        hosts.length === 1 ? 'ok' : 'warn',
+        hosts.length === 1 ? 3500 : 5000
+      );
     }
   } catch (e) {
     toast('Failed to query ingresses', 'err');
@@ -282,13 +420,32 @@ extBtn.addEventListener('click',   () => kubeAPI.openExternal(urlBar.value));
 // ── IPC listeners ─────────────────────────────────────────────────────────────
 kubeAPI.onPFStatus((data) => applyStatus(data));
 kubeAPI.onBrowserNav((url) => { urlBar.value = url; });
+kubeAPI.onAppLog((entry) => appendLog(entry));
+kubeAPI.onPFStats(({ uptime, speedLabel, totalLabel }) => {
+  sbUptime.textContent = fmtUptime(uptime);
+  sbSpeed.textContent  = speedLabel;
+  sbTotal.textContent  = `${totalLabel} total`;
+});
 
-// ── Init ──────────────────────────────────────────────────────────────────────
+// ── Init ───────────────────────────────────────────────────────────────────────
 async function init() {
   config    = await kubeAPI.getConfig();
   activeCtx = config.activeCluster;
   stopBtn.disabled = true;
+
+  const ver = await kubeAPI.getAppVersion();
+  appVersionEl.textContent = `v${ver}`;
+
+  applyTheme(config.theme || 'dark');
+  updateStatusBar('stopped');
+  sbCtxName.textContent = activeCtx || '—';
+
+  const logs = await kubeAPI.getAppLogs();
+  logs.forEach((e) => appendLog(e));
+
   await loadContexts();
+
+  if (activeCtx && !effective(activeCtx).fqdn) autoDiscoverFqdn(activeCtx);
 }
 
 init().catch(console.error);

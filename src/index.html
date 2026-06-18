@@ -11,14 +11,15 @@
   <!-- ── Top toolbar ─────────────────────────────────────────────────── -->
   <div class="toolbar">
     <div class="toolbar-brand">
-      <span class="brand-icon">⎈</span>
+      <span class="brand-icon">&#x2388;</span>
       <span class="brand-name">KubeRemoteWeb</span>
+      <span class="brand-version" id="appVersion">v1.0.0</span>
     </div>
 
     <div class="toolbar-cluster">
       <label class="field-label">Cluster</label>
       <div class="select-wrap">
-        <select id="contextSelect"><option value="">Loading…</option></select>
+        <select id="contextSelect"><option value="">Loading&hellip;</option></select>
       </div>
       <button id="refreshCtxBtn" class="icon-btn" title="Refresh contexts">&#8635;</button>
     </div>
@@ -33,6 +34,8 @@
     </div>
 
     <div class="toolbar-end">
+      <button id="themeBtn"    class="icon-btn" title="Switch to light theme">&#9788;</button>
+      <button id="debugBtn"    class="icon-btn" title="Debug logs">&#9776;</button>
       <button id="settingsBtn" class="icon-btn" title="Settings">&#9881;</button>
     </div>
   </div>
@@ -42,23 +45,21 @@
     <button id="backBtn"    class="nav-btn" title="Back">&#8592;</button>
     <button id="fwdBtn"     class="nav-btn" title="Forward">&#8594;</button>
     <button id="reloadBtn"  class="nav-btn" title="Reload">&#8635;</button>
-    <input  id="urlBar" type="text" class="url-bar" placeholder="Enter URL and press Enter…" />
+    <input  id="urlBar" type="text" class="url-bar" placeholder="Enter URL and press Enter&hellip;" />
     <button id="goBtn"      class="nav-btn go-btn">Go</button>
     <button id="extBtn"     class="nav-btn" title="Open in system browser">&#8599;</button>
   </div>
 
-  <!-- ── Settings panel (slides in from left over browser area) ───────── -->
+  <!-- ── Settings panel ───────────────────────────────────────────────── -->
   <div id="settingsPanel" class="settings-panel">
     <div class="settings-hdr">
       <h2>Settings</h2>
       <button id="closeSettingsBtn" class="icon-btn">&#10005;</button>
     </div>
 
-    <!-- Cluster overrides -->
     <div class="s-section">
-      <div class="s-section-title">Cluster override — <span id="settingsCtxLabel" class="accent">-</span></div>
+      <div class="s-section-title">Cluster override &mdash; <span id="settingsCtxLabel" class="accent">-</span></div>
       <p class="s-hint">Leave blank to inherit the global default.</p>
-
       <div class="field">
         <label>Service</label>
         <input id="sfService" type="text" placeholder="svc/tp-ingress-controller" />
@@ -79,12 +80,10 @@
       </div>
     </div>
 
-    <!-- Browser settings -->
     <div class="s-section">
       <div class="s-section-title">Browser</div>
-
       <div class="field">
-        <label>FQDN <span class="s-hint-inline">(cluster hostname to MAP → 127.0.0.1)</span></label>
+        <label>FQDN <span class="s-hint-inline">(cluster hostname to MAP &rarr; 127.0.0.1)</span></label>
         <div class="input-action">
           <input id="sfFqdn" type="text" placeholder="my-cluster.example.com" />
           <button id="discoverBtn" class="btn btn-ghost">Discover</button>
@@ -100,7 +99,6 @@
       </label>
     </div>
 
-    <!-- Proxy -->
     <div class="s-section">
       <div class="s-section-title">Proxy</div>
       <label class="toggle-row">
@@ -121,7 +119,6 @@
       <button id="cancelBtn"      class="btn btn-ghost">Cancel</button>
     </div>
 
-    <!-- Global defaults -->
     <div class="s-section" style="margin-top:24px">
       <div class="s-section-title">Global defaults</div>
       <p class="s-hint">Applied when no cluster override is set.</p>
@@ -149,18 +146,63 @@
     </div>
   </div>
 
-  <!-- ── Empty / welcome state ────────────────────────────────────────── -->
+  <!-- ── Debug log panel ──────────────────────────────────────────────── -->
+  <div id="debugPanel" class="debug-panel">
+    <div class="debug-hdr">
+      <h2>Debug Logs</h2>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button id="clearLogBtn" class="btn btn-ghost" style="font-size:11px;padding:4px 10px">Clear</button>
+        <button id="closeDebugBtn" class="icon-btn">&#10005;</button>
+      </div>
+    </div>
+    <div id="debugLog" class="debug-log"></div>
+  </div>
+
+  <!-- ── Empty / welcome state ─────────────────────────────────────────── -->
   <div id="emptyState" class="empty-state">
     <div class="empty-content">
-      <div class="empty-icon">⎈</div>
+      <div class="empty-icon">&#x2388;</div>
       <h2>KubeRemoteWeb</h2>
       <p>Select a Kubernetes cluster context, then click <strong>Start</strong>.</p>
       <p>The port-forward will be established and the embedded browser will open automatically.</p>
     </div>
   </div>
 
+  <!-- ── Connecting overlay ────────────────────────────────────────────── -->
+  <div id="connectingState" class="connecting-state hidden">
+    <div class="connecting-content">
+      <div class="connecting-icon">&#x2388;</div>
+      <h2>Connecting&hellip;</h2>
+      <p>Establishing port-forward to cluster.<br>Please wait.</p>
+    </div>
+  </div>
+
   <!-- ── Toast container ──────────────────────────────────────────────── -->
   <div id="toasts" class="toast-container"></div>
+
+  <!-- ── Bottom status bar ────────────────────────────────────────────── -->
+  <div id="statusBar" class="status-bar">
+    <div class="sb-item">
+      <span id="sbDot" class="sb-dot sb-dot-stopped"></span>
+      <span id="sbPfText">Port-forward: Stopped</span>
+    </div>
+    <div class="sb-sep-v"></div>
+    <div class="sb-item" id="sbUptimeWrap" style="display:none">
+      <span class="sb-label">&#9201;</span>
+      <span id="sbUptime">00:00:00</span>
+    </div>
+    <div class="sb-item" id="sbBwWrap" style="display:none">
+      <span class="sb-label">&#8595;</span>
+      <span id="sbSpeed">0 KB/s</span>
+      <span class="sb-mid">&middot;</span>
+      <span id="sbTotal">0 B total</span>
+    </div>
+    <div class="sb-spacer"></div>
+    <div class="sb-item">
+      <span class="sb-label">Context:</span>
+      <span id="sbCtxName">&mdash;</span>
+    </div>
+  </div>
 
   <script src="renderer.js"></script>
 </body>
