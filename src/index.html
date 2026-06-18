@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'">
+  <title>KubeRemoteWeb</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ── Top toolbar ─────────────────────────────────────────────────── -->
+  <div class="toolbar">
+    <div class="toolbar-brand">
+      <span class="brand-icon">⎈</span>
+      <span class="brand-name">KubeRemoteWeb</span>
+    </div>
+
+    <div class="toolbar-cluster">
+      <label class="field-label">Cluster</label>
+      <div class="select-wrap">
+        <select id="contextSelect"><option value="">Loading…</option></select>
+      </div>
+      <button id="refreshCtxBtn" class="icon-btn" title="Refresh contexts">&#8635;</button>
+    </div>
+
+    <div class="toolbar-pf">
+      <button id="startBtn" class="btn btn-success">&#9654; Start</button>
+      <button id="stopBtn"  class="btn btn-danger"  disabled>&#9632; Stop</button>
+      <div id="statusBadge" class="status-badge status-stopped">
+        <span class="status-dot"></span>
+        <span id="statusText">Stopped</span>
+      </div>
+    </div>
+
+    <div class="toolbar-end">
+      <button id="settingsBtn" class="icon-btn" title="Settings">&#9881;</button>
+    </div>
+  </div>
+
+  <!-- ── Browser nav bar ──────────────────────────────────────────────── -->
+  <div class="navBar">
+    <button id="backBtn"    class="nav-btn" title="Back">&#8592;</button>
+    <button id="fwdBtn"     class="nav-btn" title="Forward">&#8594;</button>
+    <button id="reloadBtn"  class="nav-btn" title="Reload">&#8635;</button>
+    <input  id="urlBar" type="text" class="url-bar" placeholder="Enter URL and press Enter…" />
+    <button id="goBtn"      class="nav-btn go-btn">Go</button>
+    <button id="extBtn"     class="nav-btn" title="Open in system browser">&#8599;</button>
+  </div>
+
+  <!-- ── Settings panel (slides in from left over browser area) ───────── -->
+  <div id="settingsPanel" class="settings-panel">
+    <div class="settings-hdr">
+      <h2>Settings</h2>
+      <button id="closeSettingsBtn" class="icon-btn">&#10005;</button>
+    </div>
+
+    <!-- Cluster overrides -->
+    <div class="s-section">
+      <div class="s-section-title">Cluster override — <span id="settingsCtxLabel" class="accent">-</span></div>
+      <p class="s-hint">Leave blank to inherit the global default.</p>
+
+      <div class="field">
+        <label>Service</label>
+        <input id="sfService" type="text" placeholder="svc/tp-ingress-controller" />
+      </div>
+      <div class="field">
+        <label>Namespace</label>
+        <input id="sfNamespace" type="text" placeholder="tp-ingress-controller" />
+      </div>
+      <div class="field-row">
+        <div class="field half">
+          <label>Local port</label>
+          <input id="sfLocalPort" type="number" min="1" max="65535" placeholder="443" />
+        </div>
+        <div class="field half">
+          <label>Remote port</label>
+          <input id="sfRemotePort" type="number" min="1" max="65535" placeholder="443" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Browser settings -->
+    <div class="s-section">
+      <div class="s-section-title">Browser</div>
+
+      <div class="field">
+        <label>FQDN <span class="s-hint-inline">(cluster hostname to MAP → 127.0.0.1)</span></label>
+        <div class="input-action">
+          <input id="sfFqdn" type="text" placeholder="my-cluster.example.com" />
+          <button id="discoverBtn" class="btn btn-ghost">Discover</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Start URL</label>
+        <input id="sfStartUrl" type="text" placeholder="https://my-cluster.example.com/app" />
+      </div>
+      <label class="toggle-row">
+        <input id="sfIgnoreSsl" type="checkbox" />
+        <span>Ignore SSL certificate errors</span>
+      </label>
+    </div>
+
+    <!-- Proxy -->
+    <div class="s-section">
+      <div class="s-section-title">Proxy</div>
+      <label class="toggle-row">
+        <input id="sfUseProxy" type="checkbox" />
+        <span>Use proxy server</span>
+      </label>
+      <div id="proxyField" class="field" style="display:none;margin-top:8px">
+        <label>Proxy server</label>
+        <input id="sfProxy" type="text" placeholder="http://proxy.corp.com:8080" />
+      </div>
+    </div>
+
+    <p class="s-restart-note">&#9432; FQDN, SSL, and proxy changes require <strong>Save &amp; Restart</strong> to take effect.</p>
+
+    <div class="settings-actions">
+      <button id="saveBtn"        class="btn btn-primary">Save</button>
+      <button id="saveRestartBtn" class="btn btn-warning">Save &amp; Restart</button>
+      <button id="cancelBtn"      class="btn btn-ghost">Cancel</button>
+    </div>
+
+    <!-- Global defaults -->
+    <div class="s-section" style="margin-top:24px">
+      <div class="s-section-title">Global defaults</div>
+      <p class="s-hint">Applied when no cluster override is set.</p>
+      <div class="field">
+        <label>Service</label>
+        <input id="dfService" type="text" />
+      </div>
+      <div class="field">
+        <label>Namespace</label>
+        <input id="dfNamespace" type="text" />
+      </div>
+      <div class="field-row">
+        <div class="field half">
+          <label>Local port</label>
+          <input id="dfLocalPort" type="number" />
+        </div>
+        <div class="field half">
+          <label>Remote port</label>
+          <input id="dfRemotePort" type="number" />
+        </div>
+      </div>
+      <div class="settings-actions" style="margin-top:10px">
+        <button id="saveDefaultsBtn" class="btn btn-secondary">Save defaults</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Empty / welcome state ────────────────────────────────────────── -->
+  <div id="emptyState" class="empty-state">
+    <div class="empty-content">
+      <div class="empty-icon">⎈</div>
+      <h2>KubeRemoteWeb</h2>
+      <p>Select a Kubernetes cluster context, then click <strong>Start</strong>.</p>
+      <p>The port-forward will be established and the embedded browser will open automatically.</p>
+    </div>
+  </div>
+
+  <!-- ── Toast container ──────────────────────────────────────────────── -->
+  <div id="toasts" class="toast-container"></div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
