@@ -15,7 +15,6 @@ const os   = require('os');
 
 const execAsync = promisify(exec);
 
-// Config lives at ~/.kuberemoteweb/config.json — readable before app.ready
 const CONFIG_DIR  = path.join(os.homedir(), '.kuberemoteweb');
 const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
 
@@ -35,7 +34,7 @@ function writeConfig(cfg) {
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2), 'utf8');
 }
 
-// ── Apply command-line switches BEFORE app.ready ────────────────────────────
+// Apply command-line switches BEFORE app.ready
 const initialConfig  = readConfig();
 const initialCluster = initialConfig.activeCluster;
 
@@ -60,9 +59,10 @@ if (initialCluster) {
 
 process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true';
 
-// ── State ───────────────────────────────────────────────────────────────────
+// ── State ────────────────────────────────────────────────────────────────────
 const TOOLBAR_HEIGHT = 100;
 const SETTINGS_WIDTH = 400;
+const STATUS_HEIGHT  = 28;
 
 let mainWindow         = null;
 let browserView        = null;
@@ -72,13 +72,61 @@ let currentConfig      = initialConfig;
 let settingsOpen       = false;
 let browserVisible     = false;
 
-// ── kubectl helpers ──────────────────────────────────────────────────────────
+// ── Log buffer ────────────────────────────────────────────────────────────────
+const LOG_BUFFER_MAX = 500;
+let logBuffer = [];
+
+function addLog(level, text) {
+  const entry = { ts: Date.now(), level, text };
+  logBuffer.push(entry);
+  if (logBuffer.length > LOG_BUFFER_MAX) logBuffer.shift();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('app-log', entry);
+  }
+}
+
+// ── Bandwidth stats ───────────────────────────────────────────────────────────
+let pfStartTime = 0, pfBytesDown = 0, pfBytesWindow = 0, pfKbps = 0;
+let pfStatsInterval = null;
+
+function formatSpeed(kbps) {
+  if (kbps >= 1000) return `${(kbps / 1000).toFixed(1)} MB/s`;
+  return `${kbps} KB/s`;
+}
+
+function formatBytes(b) {
+  if (b >= 1048576) return `${(b / 1048576).toFixed(1)} MB`;
+  if (b >= 1024)    return `${(b / 1024).toFixed(1)} KB`;
+  return `${b} B`;
+}
+
+function startStatsTracking() {
+  pfStartTime = Date.now(); pfBytesDown = 0; pfBytesWindow = 0; pfKbps = 0;
+  pfStatsInterval = setInterval(() => {
+    pfKbps = Math.round(pfBytesWindow * 8 / 1000);
+    pfBytesDown += pfBytesWindow; pfBytesWindow = 0;
+    const uptime = Math.floor((Date.now() - pfStartTime) / 1000);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('pf-stats', {
+        uptime, kbps: pfKbps,
+        speedLabel: formatSpeed(pfKbps),
+        totalLabel: formatBytes(pfBytesDown)
+      });
+    }
+  }, 1000);
+}
+
+function stopStatsTracking() {
+  if (pfStatsInterval) { clearInterval(pfStatsInterval); pfStatsInterval = null; }
+}
+
+// ── kubectl helpers ───────────────────────────────────────────────────────────
 async function getKubeContexts() {
   try {
     const { stdout } = await execAsync('kubectl config get-contexts -o name', { timeout: 8000 });
     return stdout.trim().split('\n').filter(Boolean);
   } catch (e) {
-    console.error('kubectl get-contexts error:', e.message);
+    addLog('err', `kubectl get-contexts: ${e.message}`);
     return [];
   }
 }
@@ -108,14 +156,17 @@ async function getIngressHosts(contextName) {
     }
     return [...hosts];
   } catch (e) {
-    console.error('kubectl get ingress error:', e.message);
+    addLog('err', `kubectl get ingress: ${e.message}`);
     return [];
   }
 }
 
-// ── Port-forward ─────────────────────────────────────────────────────────────
+// ── Port-forward ──────────────────────────────────────────────────────────────
 function sendStatus(status, message) {
   portForwardStatus = status;
+  if (status === 'running') startStatsTracking();
+  if (status === 'stopped' || status === 'error') stopStatsTracking();
+  addLog(status === 'error' ? 'err' : 'info', `[status] ${status}${message ? ': ' + message : ''}`);
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('port-forward-status', { status, message });
   }
@@ -125,14 +176,14 @@ function startPortForward(contextName) {
   if (portForwardProcess) stopPortForward();
 
   const args = buildPortForwardArgs(currentConfig, contextName);
-  console.log('[pf] kubectl', args.join(' '));
+  addLog('info', `[pf] kubectl ${args.join(' ')}`);
   sendStatus('starting', `kubectl ${args.join(' ')}`);
 
   portForwardProcess = spawn('kubectl', args, { stdio: ['ignore', 'pipe', 'pipe'] });
 
   portForwardProcess.stdout.on('data', (data) => {
     const msg = data.toString().trim();
-    console.log('[pf stdout]', msg);
+    addLog('info', `[pf] ${msg}`);
     if (msg.includes('Forwarding from')) {
       const cc = getEffectiveClusterConfig(currentConfig, contextName);
       sendStatus('running', `Active on ${cc.localPort} → ${cc.remotePort}`);
@@ -141,18 +192,18 @@ function startPortForward(contextName) {
 
   portForwardProcess.stderr.on('data', (data) => {
     const msg = data.toString().trim();
-    console.error('[pf stderr]', msg);
+    addLog(/error/i.test(msg) ? 'err' : 'warn', `[pf stderr] ${msg}`);
     if (/error/i.test(msg)) sendStatus('error', msg.substring(0, 140));
   });
 
   portForwardProcess.on('error', (err) => {
-    console.error('[pf spawn error]', err);
+    addLog('err', `[pf spawn] ${err.message}`);
     sendStatus('error', `kubectl not found: ${err.message}`);
     portForwardProcess = null;
   });
 
   portForwardProcess.on('close', (code) => {
-    console.log('[pf] exited', code);
+    addLog('info', `[pf] process exited (${code})`);
     portForwardProcess = null;
     if (portForwardStatus === 'running' || portForwardStatus === 'starting') {
       sendStatus('error', `Port-forward stopped (exit ${code})`);
@@ -175,7 +226,7 @@ function updateBrowserViewBounds() {
   }
   const x  = settingsOpen ? SETTINGS_WIDTH : 0;
   const bw = settingsOpen ? Math.max(0, w - SETTINGS_WIDTH) : w;
-  browserView.setBounds({ x, y: TOOLBAR_HEIGHT, width: bw, height: Math.max(0, h - TOOLBAR_HEIGHT) });
+  browserView.setBounds({ x, y: TOOLBAR_HEIGHT, width: bw, height: Math.max(0, h - TOOLBAR_HEIGHT - STATUS_HEIGHT) });
 }
 
 // ── Window creation ───────────────────────────────────────────────────────────
@@ -193,10 +244,10 @@ function createWindow() {
 
   browserView = new BrowserView({
     webPreferences: {
-      contextIsolation:          true,
-      nodeIntegration:           false,
+      contextIsolation:            true,
+      nodeIntegration:             false,
       allowRunningInsecureContent: true,
-      webSecurity:               false
+      webSecurity:                 false
     }
   });
 
@@ -216,6 +267,15 @@ function createWindow() {
       mainWindow.webContents.send('browser-navigated', url);
   });
 
+  browserView.webContents.session.webRequest.onCompleted((details) => {
+    if (portForwardStatus !== 'running') return;
+    const headers = details.responseHeaders || {};
+    const cl = parseInt(
+      headers['content-length']?.[0] || headers['Content-Length']?.[0] || '0', 10
+    );
+    if (!isNaN(cl) && cl > 0) pfBytesWindow += cl;
+  });
+
   browserView.setBounds({ x: 0, y: TOOLBAR_HEIGHT, width: 0, height: 0 });
 
   ['resize','maximize','unmaximize','enter-full-screen','leave-full-screen'].forEach(
@@ -225,6 +285,8 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
   mainWindow.on('closed', () => { stopPortForward(); mainWindow = null; });
 
+  addLog('info', `KubeRemoteWeb v${app.getVersion()} started`);
+
   if (!currentConfig.activeCluster) {
     getCurrentKubeContext().then((ctx) => {
       if (ctx) { currentConfig.activeCluster = ctx; writeConfig(currentConfig); }
@@ -232,7 +294,7 @@ function createWindow() {
   }
 }
 
-// ── IPC handlers ─────────────────────────────────────────────────────────────
+// ── IPC handlers ──────────────────────────────────────────────────────────────
 ipcMain.handle('get-config',          ()        => currentConfig);
 ipcMain.handle('save-config',         (_e, cfg) => { currentConfig = cfg; writeConfig(currentConfig); return true; });
 ipcMain.handle('get-kube-contexts',   ()        => getKubeContexts());
@@ -249,11 +311,13 @@ ipcMain.handle('browser-back',    () => browserView?.webContents.canGoBack()    
 ipcMain.handle('browser-forward', () => browserView?.webContents.canGoForward() && browserView.webContents.goForward());
 ipcMain.handle('browser-reload',  () => browserView?.webContents.reload());
 
-ipcMain.handle('show-browser',     (_e, show) => { browserVisible = show; updateBrowserViewBounds(); return true; });
-ipcMain.handle('toggle-settings',  (_e, open) => { settingsOpen   = open; updateBrowserViewBounds(); return true; });
-ipcMain.handle('open-external',    (_e, url)  => shell.openExternal(url));
-ipcMain.handle('relaunch-app',     ()         => { stopPortForward(); app.relaunch(); app.quit(); });
-ipcMain.handle('get-pf-status',    ()         => ({ status: portForwardStatus }));
+ipcMain.handle('show-browser',    (_e, show) => { browserVisible = show; updateBrowserViewBounds(); return true; });
+ipcMain.handle('toggle-settings', (_e, open) => { settingsOpen   = open; updateBrowserViewBounds(); return true; });
+ipcMain.handle('open-external',   (_e, url)  => shell.openExternal(url));
+ipcMain.handle('relaunch-app',    ()         => { stopPortForward(); app.relaunch(); app.quit(); });
+ipcMain.handle('get-pf-status',   ()         => ({ status: portForwardStatus }));
+ipcMain.handle('get-app-version', ()         => app.getVersion());
+ipcMain.handle('get-app-logs',    ()         => logBuffer);
 
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 app.whenReady().then(createWindow);
