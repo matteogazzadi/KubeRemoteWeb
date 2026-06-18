@@ -1,10 +1,17 @@
 name: Release
 
 # Triggered by pushing a version tag: git tag v1.2.3 && git push origin v1.2.3
+# Or triggered manually from the Actions tab with a version input.
 on:
   push:
     tags:
       - 'v[0-9]*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. v1.0.0)'
+        required: true
+        default: 'v1.0.0'
 
 permissions:
   contents: write   # needed to create GitHub Releases and upload assets
@@ -52,12 +59,22 @@ jobs:
       - name: Build distributable
         run: ${{ matrix.build_cmd }}
         env:
-          # Skip code-signing on macOS (no certificate configured)
           CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Determine release tag
+        id: tag
+        shell: bash
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            echo "value=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "value=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Upload artifacts to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.tag.outputs.value }}
           files: ${{ matrix.artifact_glob }}
           generate_release_notes: true
           draft: false
