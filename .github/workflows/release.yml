@@ -14,7 +14,7 @@ on:
         default: 'v1.0.0'
 
 permissions:
-  contents: write   # needed to create GitHub Releases and upload assets
+  contents: write
 
 jobs:
   build:
