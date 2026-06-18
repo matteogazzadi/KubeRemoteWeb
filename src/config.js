@@ -2,6 +2,7 @@
 
 const DEFAULT_CONFIG = {
   activeCluster: null,
+  kubeconfigPath: null,
   defaults: {
     service:         'svc/tp-ingress-controller',
     namespace:       'tp-ingress-controller',
@@ -36,13 +37,15 @@ function getEffectiveClusterConfig(config, contextName) {
 /** Build the kubectl port-forward argument array for a given context. */
 function buildPortForwardArgs(config, contextName) {
   const cc = getEffectiveClusterConfig(config, contextName);
-  return [
+  const args = [
     'port-forward',
     '-n', cc.namespace,
     cc.service,
     `${cc.localPort}:${cc.remotePort}`,
     `--context=${contextName}`
   ];
+  if (config.kubeconfigPath) args.push(`--kubeconfig=${config.kubeconfigPath}`);
+  return args;
 }
 
 /**
