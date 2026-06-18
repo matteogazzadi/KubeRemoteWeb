@@ -1,56 +1,59 @@
 /* global kubeAPI */
 'use strict';
 
-// ── DOM refs ──────────────────────────────────────────────────────────────────
-const contextSelect    = document.getElementById('contextSelect');
-const refreshCtxBtn    = document.getElementById('refreshCtxBtn');
-const startBtn         = document.getElementById('startBtn');
-const stopBtn          = document.getElementById('stopBtn');
-const statusBadge      = document.getElementById('statusBadge');
-const statusText       = document.getElementById('statusText');
-const settingsBtn      = document.getElementById('settingsBtn');
-const settingsPanel    = document.getElementById('settingsPanel');
-const closeSettingsBtn = document.getElementById('closeSettingsBtn');
-const urlBar           = document.getElementById('urlBar');
-const backBtn          = document.getElementById('backBtn');
-const fwdBtn           = document.getElementById('fwdBtn');
-const reloadBtn        = document.getElementById('reloadBtn');
-const goBtn            = document.getElementById('goBtn');
-const extBtn           = document.getElementById('extBtn');
-const emptyState       = document.getElementById('emptyState');
-const settingsCtxLabel = document.getElementById('settingsCtxLabel');
-const discoverBtn      = document.getElementById('discoverBtn');
-const saveBtn          = document.getElementById('saveBtn');
-const saveRestartBtn   = document.getElementById('saveRestartBtn');
-const cancelBtn        = document.getElementById('cancelBtn');
-const saveDefaultsBtn  = document.getElementById('saveDefaultsBtn');
-const sfUseProxy       = document.getElementById('sfUseProxy');
-const proxyField       = document.getElementById('proxyField');
-const connectingState  = document.getElementById('connectingState');
-const themeBtn         = document.getElementById('themeBtn');
-const debugBtn         = document.getElementById('debugBtn');
-const debugPanel       = document.getElementById('debugPanel');
-const closeDebugBtn    = document.getElementById('closeDebugBtn');
-const debugLog         = document.getElementById('debugLog');
-const clearLogBtn      = document.getElementById('clearLogBtn');
-const appVersionEl     = document.getElementById('appVersion');
-const sbDot            = document.getElementById('sbDot');
-const sbPfText         = document.getElementById('sbPfText');
-const sbUptimeWrap     = document.getElementById('sbUptimeWrap');
-const sbBwWrap         = document.getElementById('sbBwWrap');
-const sbUptime         = document.getElementById('sbUptime');
-const sbSpeed          = document.getElementById('sbSpeed');
-const sbTotal          = document.getElementById('sbTotal');
-const sbCtxName        = document.getElementById('sbCtxName');
+// ── DOM refs ─────────────────────────────────────────────────────
+const contextSelect      = document.getElementById('contextSelect');
+const refreshCtxBtn      = document.getElementById('refreshCtxBtn');
+const startBtn           = document.getElementById('startBtn');
+const stopBtn            = document.getElementById('stopBtn');
+const statusBadge        = document.getElementById('statusBadge');
+const statusText         = document.getElementById('statusText');
+const settingsBtn        = document.getElementById('settingsBtn');
+const settingsPanel      = document.getElementById('settingsPanel');
+const closeSettingsBtn   = document.getElementById('closeSettingsBtn');
+const urlBar             = document.getElementById('urlBar');
+const backBtn            = document.getElementById('backBtn');
+const fwdBtn             = document.getElementById('fwdBtn');
+const reloadBtn          = document.getElementById('reloadBtn');
+const goBtn              = document.getElementById('goBtn');
+const extBtn             = document.getElementById('extBtn');
+const emptyState         = document.getElementById('emptyState');
+const settingsCtxLabel   = document.getElementById('settingsCtxLabel');
+const discoverBtn        = document.getElementById('discoverBtn');
+const saveBtn            = document.getElementById('saveBtn');
+const saveRestartBtn     = document.getElementById('saveRestartBtn');
+const cancelBtn          = document.getElementById('cancelBtn');
+const saveDefaultsBtn    = document.getElementById('saveDefaultsBtn');
+const sfUseProxy         = document.getElementById('sfUseProxy');
+const proxyField         = document.getElementById('proxyField');
+const connectingState    = document.getElementById('connectingState');
+const themeBtn           = document.getElementById('themeBtn');
+const debugBtn           = document.getElementById('debugBtn');
+const debugPanel         = document.getElementById('debugPanel');
+const closeDebugBtn      = document.getElementById('closeDebugBtn');
+const debugLog           = document.getElementById('debugLog');
+const clearLogBtn        = document.getElementById('clearLogBtn');
+const appVersionEl       = document.getElementById('appVersion');
+const sbDot              = document.getElementById('sbDot');
+const sbPfText           = document.getElementById('sbPfText');
+const sbUptimeWrap       = document.getElementById('sbUptimeWrap');
+const sbBwWrap           = document.getElementById('sbBwWrap');
+const sbUptime           = document.getElementById('sbUptime');
+const sbSpeed            = document.getElementById('sbSpeed');
+const sbTotal            = document.getElementById('sbTotal');
+const sbCtxName          = document.getElementById('sbCtxName');
+const sfKubeconfig       = document.getElementById('sfKubeconfig');
+const browseKubeconfigBtn = document.getElementById('browseKubeconfigBtn');
+const clearKubeconfigBtn = document.getElementById('clearKubeconfigBtn');
 
-// ── State ─────────────────────────────────────────────────────────────────────
+// ── State ─────────────────────────────────────────────────────
 let config        = null;
 let activeCtx     = null;
 let settingsOpen  = false;
 let debugOpen     = false;
 let browserActive = false;
 
-// ── Toast ─────────────────────────────────────────────────────────────────────
+// ── Toast ─────────────────────────────────────────────────────
 function toast(msg, type = '', duration = 3500) {
   const container = document.getElementById('toasts');
   const el = document.createElement('div');
@@ -64,7 +67,7 @@ function toast(msg, type = '', duration = 3500) {
   }, duration);
 }
 
-// ── Theme ─────────────────────────────────────────────────────────────────────
+// ── Theme ─────────────────────────────────────────────────────
 function applyTheme(theme) {
   if (theme === 'light') {
     document.body.classList.add('light-theme');
@@ -84,7 +87,7 @@ function toggleTheme() {
   kubeAPI.saveConfig(config).catch(() => {});
 }
 
-// ── Debug log panel ───────────────────────────────────────────────────────────
+// ── Debug log panel ───────────────────────────────────────────
 function fmtLogTime(ts) {
   return new Date(ts).toTimeString().slice(0, 8);
 }
@@ -125,7 +128,7 @@ function closeDebug() {
   debugPanel.classList.remove('open');
 }
 
-// ── Status bar ────────────────────────────────────────────────────────────────
+// ── Status bar ──────────────────────────────────────────────────
 function fmtUptime(s) {
   const h   = Math.floor(s / 3600);
   const m   = Math.floor((s % 3600) / 60);
@@ -152,7 +155,14 @@ function updateStatusBar(status) {
   }
 }
 
-// ── Config helpers ────────────────────────────────────────────────────────────
+// ── Kubeconfig display ──────────────────────────────────────────
+function updateKubeconfigDisplay() {
+  const p = config.kubeconfigPath || '';
+  sfKubeconfig.value = p;
+  clearKubeconfigBtn.style.display = p ? '' : 'none';
+}
+
+// ── Config helpers ───────────────────────────────────────────────
 function effective(ctxName) {
   const defs = config.defaults || {};
   const over = (config.clusters || {})[ctxName] || {};
@@ -180,6 +190,8 @@ function populateSettingsForm(ctxName) {
   document.getElementById('dfNamespace').value  = config.defaults.namespace  || '';
   document.getElementById('dfLocalPort').value  = config.defaults.localPort  || '';
   document.getElementById('dfRemotePort').value = config.defaults.remotePort || '';
+
+  updateKubeconfigDisplay();
 }
 
 function collectClusterOverride(ctxName) {
@@ -208,7 +220,7 @@ function collectClusterOverride(ctxName) {
   config.clusters[ctxName] = over;
 }
 
-// ── FQDN auto-discover ────────────────────────────────────────────────────────
+// ── FQDN auto-discover ──────────────────────────────────────────
 async function autoDiscoverFqdn(ctxName) {
   try {
     const hosts = await kubeAPI.getIngressHosts(ctxName);
@@ -224,7 +236,7 @@ async function autoDiscoverFqdn(ctxName) {
   } catch (_) { /* silent */ }
 }
 
-// ── Settings panel ────────────────────────────────────────────────────────────
+// ── Settings panel ──────────────────────────────────────────────
 function openSettings() {
   settingsOpen = true;
   settingsPanel.classList.add('open');
@@ -238,7 +250,7 @@ function closeSettings() {
   kubeAPI.toggleSettings(false);
 }
 
-// ── Browser navigation ────────────────────────────────────────────────────────
+// ── Browser navigation ───────────────────────────────────────────
 async function navigateTo(rawUrl) {
   let url = rawUrl.trim();
   if (!url) return;
@@ -251,7 +263,7 @@ async function navigateTo(rawUrl) {
   await kubeAPI.showBrowser(true);
 }
 
-// ── Context switching ─────────────────────────────────────────────────────────
+// ── Context switching ─────────────────────────────────────────────
 async function switchContext(ctxName) {
   if (ctxName === activeCtx) return;
   await kubeAPI.stopPortForward();
@@ -268,7 +280,7 @@ async function switchContext(ctxName) {
   if (!effective(ctxName).fqdn) autoDiscoverFqdn(ctxName);
 }
 
-// ── Populate context selector ─────────────────────────────────────────────────
+// ── Populate context selector ─────────────────────────────────────────
 async function loadContexts() {
   contextSelect.innerHTML = '<option value="">Loading…</option>';
   const ctxs = await kubeAPI.getKubeContexts();
@@ -293,7 +305,7 @@ async function loadContexts() {
   urlBar.value = effective(activeCtx).startUrl || '';
 }
 
-// ── Status update ─────────────────────────────────────────────────────────────
+// ── Status update ──────────────────────────────────────────────────
 function applyStatus({ status, message }) {
   statusBadge.className = `status-badge status-${status}`;
   const labels = { stopped: 'Stopped', starting: 'Starting…', running: 'Running', error: 'Error' };
@@ -315,7 +327,7 @@ function applyStatus({ status, message }) {
   if (status === 'error')   { toast(message || 'Port-forward error', 'err'); startBtn.disabled = false; }
 }
 
-// ── Event wiring ──────────────────────────────────────────────────────────────
+// ── Event wiring ──────────────────────────────────────────────────
 contextSelect.addEventListener('change', (e) => switchContext(e.target.value));
 refreshCtxBtn.addEventListener('click', loadContexts);
 
@@ -346,6 +358,24 @@ themeBtn.addEventListener('click', toggleTheme);
 debugBtn.addEventListener('click', () => debugOpen ? closeDebug() : openDebug());
 closeDebugBtn.addEventListener('click', closeDebug);
 clearLogBtn.addEventListener('click', () => { debugLog.innerHTML = ''; });
+
+browseKubeconfigBtn.addEventListener('click', async () => {
+  const p = await kubeAPI.browseKubeconfig();
+  if (!p) return;
+  config.kubeconfigPath = p;
+  await kubeAPI.saveConfig(config);
+  updateKubeconfigDisplay();
+  toast('Loading contexts from new kubeconfig…', 'ok');
+  await loadContexts();
+});
+
+clearKubeconfigBtn.addEventListener('click', async () => {
+  config.kubeconfigPath = null;
+  await kubeAPI.saveConfig(config);
+  updateKubeconfigDisplay();
+  toast('Using default kubeconfig');
+  await loadContexts();
+});
 
 saveBtn.addEventListener('click', async () => {
   if (!activeCtx) return;
@@ -417,7 +447,7 @@ fwdBtn.addEventListener('click',   () => kubeAPI.browserForward());
 reloadBtn.addEventListener('click',() => kubeAPI.browserReload());
 extBtn.addEventListener('click',   () => kubeAPI.openExternal(urlBar.value));
 
-// ── IPC listeners ─────────────────────────────────────────────────────────────
+// ── IPC listeners ─────────────────────────────────────────────────
 kubeAPI.onPFStatus((data) => applyStatus(data));
 kubeAPI.onBrowserNav((url) => { urlBar.value = url; });
 kubeAPI.onAppLog((entry) => appendLog(entry));
@@ -427,7 +457,7 @@ kubeAPI.onPFStats(({ uptime, speedLabel, totalLabel }) => {
   sbTotal.textContent  = `${totalLabel} total`;
 });
 
-// ── Init ───────────────────────────────────────────────────────────────────────
+// ── Init ────────────────────────────────────────────────────────
 async function init() {
   config    = await kubeAPI.getConfig();
   activeCtx = config.activeCluster;
