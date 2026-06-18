@@ -6,7 +6,7 @@ const {
   buildHostResolverRules
 } = require('./src/config');
 
-const { app, BrowserWindow, BrowserView, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, BrowserView, ipcMain, shell, dialog } = require('electron');
 const { spawn, exec } = require('child_process');
 const { promisify } = require('util');
 const path = require('path');
@@ -121,9 +121,15 @@ function stopStatsTracking() {
 }
 
 // ── kubectl helpers ───────────────────────────────────────────────────────────
+function kubeconfigFlag() {
+  return currentConfig.kubeconfigPath ? `--kubeconfig="${currentConfig.kubeconfigPath}"` : '';
+}
+
 async function getKubeContexts() {
   try {
-    const { stdout } = await execAsync('kubectl config get-contexts -o name', { timeout: 8000 });
+    const kc = kubeconfigFlag();
+    const cmd = `kubectl config get-contexts -o name${kc ? ' ' + kc : ''}`;
+    const { stdout } = await execAsync(cmd, { timeout: 8000 });
     return stdout.trim().split('\n').filter(Boolean);
   } catch (e) {
     addLog('err', `kubectl get-contexts: ${e.message}`);
@@ -133,7 +139,9 @@ async function getKubeContexts() {
 
 async function getCurrentKubeContext() {
   try {
-    const { stdout } = await execAsync('kubectl config current-context', { timeout: 5000 });
+    const kc = kubeconfigFlag();
+    const cmd = `kubectl config current-context${kc ? ' ' + kc : ''}`;
+    const { stdout } = await execAsync(cmd, { timeout: 5000 });
     return stdout.trim();
   } catch (e) {
     return null;
@@ -143,10 +151,9 @@ async function getCurrentKubeContext() {
 async function getIngressHosts(contextName) {
   try {
     const ctxFlag = contextName ? `--context=${contextName}` : '';
-    const { stdout } = await execAsync(
-      `kubectl get ingress -A -o json ${ctxFlag}`,
-      { timeout: 12000 }
-    );
+    const kc = kubeconfigFlag();
+    const cmd = `kubectl get ingress -A -o json ${ctxFlag}${kc ? ' ' + kc : ''}`.trim();
+    const { stdout } = await execAsync(cmd, { timeout: 12000 });
     const data  = JSON.parse(stdout);
     const hosts = new Set();
     for (const item of (data.items || [])) {
@@ -318,6 +325,21 @@ ipcMain.handle('relaunch-app',    ()         => { stopPortForward(); app.relaunc
 ipcMain.handle('get-pf-status',   ()         => ({ status: portForwardStatus }));
 ipcMain.handle('get-app-version', ()         => app.getVersion());
 ipcMain.handle('get-app-logs',    ()         => logBuffer);
+
+ipcMain.handle('browse-kubeconfig', async () => {
+  if (!mainWindow) return null;
+  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+    title: 'Select kubeconfig file',
+    properties: ['openFile'],
+    filters: [
+      { name: 'Kubeconfig', extensions: ['yaml', 'yml', 'json', 'conf', 'cfg'] },
+      { name: 'All Files',  extensions: ['*'] }
+    ]
+  });
+  if (canceled || !filePaths.length) return null;
+  addLog('info', `[kubeconfig] using: ${filePaths[0]}`);
+  return filePaths[0];
+});
 
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 app.whenReady().then(createWindow);
