@@ -21,6 +21,9 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+          # Use PAT so the tag push triggers release.yml
+          # (GITHUB_TOKEN pushes do NOT trigger other workflows)
+          token: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
 
       # bump:major -> X+1.0.0 | bump:minor -> x.Y+1.0 | default -> x.y.Z+1
       - name: Determine bump type
@@ -60,7 +63,7 @@ jobs:
           echo "Next tag: $NEW"
           echo "value=$NEW" >> "$GITHUB_OUTPUT"
 
-      # Push tag -> triggers release.yml automatically
+      # Push tag -> triggers release.yml automatically (requires PAT, not GITHUB_TOKEN)
       - name: Create and push tag
         run: |
           git config user.name  "github-actions[bot]"
