@@ -36,8 +36,8 @@ Config is stored at `~/.kuberemoteweb/config.json` (created automatically on fir
 {
   "activeCluster": "my-context",
   "defaults": {
-    "service":         "svc/tp-ingress-controller",
-    "namespace":       "tp-ingress-controller",
+    "service":         "svc/ingress-controller",
+    "namespace":       "ingress-controller",
     "localPort":       443,
     "remotePort":      443,
     "fqdn":            "",
@@ -49,8 +49,8 @@ Config is stored at `~/.kuberemoteweb/config.json` (created automatically on fir
   "clusters": {
     "my-context": {
       // any field here overrides the defaults for this context only
-      "fqdn":     "tp-onprem-k3s-roma-cc-14",
-      "startUrl": "https://tp-onprem-k3s-roma-cc-14/web-app"
+      "fqdn":     "test-cluster",
+      "startUrl": "https://test-cluster/web-app"
     }
   }
 }
