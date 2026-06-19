@@ -4,13 +4,13 @@
   "description": "Kubernetes port-forward with embedded browser",
   "main": "main.js",
   "scripts": {
-    "start":       "electron .",
-    "test":        "jest",
-    "test:watch":  "jest --watch",
+    "start":         "electron .",
+    "test":          "jest",
+    "test:watch":    "jest --watch",
     "test:coverage": "jest --coverage",
-    "build:win":   "electron-builder --win",
-    "build:mac":   "electron-builder --mac",
-    "build:linux": "electron-builder --linux"
+    "build:win":     "electron-builder --win",
+    "build:mac":     "electron-builder --mac",
+    "build:linux":   "electron-builder --linux"
   },
   "jest": {
     "testEnvironment": "node",
@@ -28,13 +28,16 @@
     "directories": { "output": "dist" },
     "files": ["main.js", "preload.js", "src/**"],
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "extraResources": [{ "from": "bin/kubectl.exe", "to": "kubectl.exe" }]
     },
     "mac": {
-      "target": "dmg"
+      "target": "dmg",
+      "extraResources": [{ "from": "bin/kubectl", "to": "kubectl" }]
     },
     "linux": {
-      "target": "AppImage"
+      "target": "AppImage",
+      "extraResources": [{ "from": "bin/kubectl", "to": "kubectl" }]
     },
     "nsis": {
       "oneClick": false,

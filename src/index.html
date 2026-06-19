@@ -8,14 +8,12 @@
 </head>
 <body>
 
-  <!-- ── Top toolbar ──────────────────────────────────────────── -->
   <div class="toolbar">
     <div class="toolbar-brand">
       <span class="brand-icon">&#x2388;</span>
       <span class="brand-name">KubeRemoteWeb</span>
       <span class="brand-version" id="appVersion">v1.0.0</span>
     </div>
-
     <div class="toolbar-cluster">
       <label class="field-label">Cluster</label>
       <div class="select-wrap">
@@ -23,7 +21,6 @@
       </div>
       <button id="refreshCtxBtn" class="icon-btn" title="Refresh contexts">&#8635;</button>
     </div>
-
     <div class="toolbar-pf">
       <button id="startBtn" class="btn btn-success">&#9654; Start</button>
       <button id="stopBtn"  class="btn btn-danger"  disabled>&#9632; Stop</button>
@@ -32,7 +29,6 @@
         <span id="statusText">Stopped</span>
       </div>
     </div>
-
     <div class="toolbar-end">
       <button id="themeBtn"    class="icon-btn" title="Switch to light theme">&#9788;</button>
       <button id="debugBtn"    class="icon-btn" title="Debug logs">&#9776;</button>
@@ -40,31 +36,28 @@
     </div>
   </div>
 
-  <!-- ── Browser nav bar ────────────────────────────────────────── -->
   <div class="navBar">
-    <button id="backBtn"    class="nav-btn" title="Back">&#8592;</button>
-    <button id="fwdBtn"     class="nav-btn" title="Forward">&#8594;</button>
-    <button id="reloadBtn"  class="nav-btn" title="Reload">&#8635;</button>
+    <button id="backBtn"   class="nav-btn" title="Back">&#8592;</button>
+    <button id="fwdBtn"    class="nav-btn" title="Forward">&#8594;</button>
+    <button id="reloadBtn" class="nav-btn" title="Reload">&#8635;</button>
     <input  id="urlBar" type="text" class="url-bar" placeholder="Enter URL and press Enter&hellip;" />
-    <button id="goBtn"      class="nav-btn go-btn">Go</button>
-    <button id="extBtn"     class="nav-btn" title="Open in system browser">&#8599;</button>
+    <button id="goBtn"     class="nav-btn go-btn">Go</button>
+    <button id="extBtn"    class="nav-btn" title="Open in system browser">&#8599;</button>
   </div>
 
-  <!-- ── Settings panel ────────────────────────────────────────── -->
   <div id="settingsPanel" class="settings-panel">
     <div class="settings-hdr">
       <h2>Settings</h2>
       <button id="closeSettingsBtn" class="icon-btn">&#10005;</button>
     </div>
 
-    <!-- Kubeconfig file -->
     <div class="s-section">
       <div class="s-section-title">Kubeconfig file</div>
       <p class="s-hint">Clusters are loaded from this file. Leave as default to use <code style="font-size:11px;color:var(--acc)">~/.kube/config</code>.</p>
       <div class="field">
         <div class="input-action">
           <input id="sfKubeconfig" type="text" readonly placeholder="Default (~/.kube/config)" style="cursor:default" />
-          <button id="browseKubeconfigBtn" class="btn btn-ghost">Browse…</button>
+          <button id="browseKubeconfigBtn" class="btn btn-ghost">Browse&hellip;</button>
         </div>
       </div>
       <button id="clearKubeconfigBtn" class="btn btn-ghost" style="font-size:11px;padding:4px 10px;display:none">&#10005; Use default</button>
@@ -73,23 +66,11 @@
     <div class="s-section">
       <div class="s-section-title">Cluster override &mdash; <span id="settingsCtxLabel" class="accent">-</span></div>
       <p class="s-hint">Leave blank to inherit the global default.</p>
-      <div class="field">
-        <label>Service</label>
-        <input id="sfService" type="text" placeholder="svc/tp-ingress-controller" />
-      </div>
-      <div class="field">
-        <label>Namespace</label>
-        <input id="sfNamespace" type="text" placeholder="tp-ingress-controller" />
-      </div>
+      <div class="field"><label>Service</label><input id="sfService" type="text" placeholder="svc/tp-ingress-controller" /></div>
+      <div class="field"><label>Namespace</label><input id="sfNamespace" type="text" placeholder="tp-ingress-controller" /></div>
       <div class="field-row">
-        <div class="field half">
-          <label>Local port</label>
-          <input id="sfLocalPort" type="number" min="1" max="65535" placeholder="443" />
-        </div>
-        <div class="field half">
-          <label>Remote port</label>
-          <input id="sfRemotePort" type="number" min="1" max="65535" placeholder="443" />
-        </div>
+        <div class="field half"><label>Local port</label><input id="sfLocalPort" type="number" min="1" max="65535" placeholder="443" /></div>
+        <div class="field half"><label>Remote port</label><input id="sfRemotePort" type="number" min="1" max="65535" placeholder="443" /></div>
       </div>
     </div>
 
@@ -102,22 +83,13 @@
           <button id="discoverBtn" class="btn btn-ghost">Discover</button>
         </div>
       </div>
-      <div class="field">
-        <label>Start URL</label>
-        <input id="sfStartUrl" type="text" placeholder="https://my-cluster.example.com/app" />
-      </div>
-      <label class="toggle-row">
-        <input id="sfIgnoreSsl" type="checkbox" />
-        <span>Ignore SSL certificate errors</span>
-      </label>
+      <div class="field"><label>Start URL</label><input id="sfStartUrl" type="text" placeholder="https://my-cluster.example.com/app" /></div>
+      <label class="toggle-row"><input id="sfIgnoreSsl" type="checkbox" /><span>Ignore SSL certificate errors</span></label>
     </div>
 
     <div class="s-section">
       <div class="s-section-title">Proxy</div>
-      <label class="toggle-row">
-        <input id="sfUseProxy" type="checkbox" />
-        <span>Use proxy server</span>
-      </label>
+      <label class="toggle-row"><input id="sfUseProxy" type="checkbox" /><span>Use proxy server</span></label>
       <div id="proxyField" class="field" style="display:none;margin-top:8px">
         <label>Proxy server</label>
         <input id="sfProxy" type="text" placeholder="http://proxy.corp.com:8080" />
@@ -125,7 +97,6 @@
     </div>
 
     <p class="s-restart-note">&#9432; FQDN, SSL, and proxy changes require <strong>Save &amp; Restart</strong> to take effect.</p>
-
     <div class="settings-actions">
       <button id="saveBtn"        class="btn btn-primary">Save</button>
       <button id="saveRestartBtn" class="btn btn-warning">Save &amp; Restart</button>
@@ -135,23 +106,11 @@
     <div class="s-section" style="margin-top:24px">
       <div class="s-section-title">Global defaults</div>
       <p class="s-hint">Applied when no cluster override is set.</p>
-      <div class="field">
-        <label>Service</label>
-        <input id="dfService" type="text" />
-      </div>
-      <div class="field">
-        <label>Namespace</label>
-        <input id="dfNamespace" type="text" />
-      </div>
+      <div class="field"><label>Service</label><input id="dfService" type="text" /></div>
+      <div class="field"><label>Namespace</label><input id="dfNamespace" type="text" /></div>
       <div class="field-row">
-        <div class="field half">
-          <label>Local port</label>
-          <input id="dfLocalPort" type="number" />
-        </div>
-        <div class="field half">
-          <label>Remote port</label>
-          <input id="dfRemotePort" type="number" />
-        </div>
+        <div class="field half"><label>Local port</label><input id="dfLocalPort" type="number" /></div>
+        <div class="field half"><label>Remote port</label><input id="dfRemotePort" type="number" /></div>
       </div>
       <div class="settings-actions" style="margin-top:10px">
         <button id="saveDefaultsBtn" class="btn btn-secondary">Save defaults</button>
@@ -159,19 +118,32 @@
     </div>
   </div>
 
-  <!-- ── Debug log panel ────────────────────────────────────────── -->
+  <!-- Debug panel -->
   <div id="debugPanel" class="debug-panel">
     <div class="debug-hdr">
-      <h2>Debug Logs</h2>
+      <div class="debug-tabs">
+        <button id="tabLogs"    class="debug-tab active">Logs</button>
+        <button id="tabNetwork" class="debug-tab">Network</button>
+      </div>
       <div style="display:flex;gap:6px;align-items:center">
-        <button id="clearLogBtn" class="btn btn-ghost" style="font-size:11px;padding:4px 10px">Clear</button>
+        <button id="clearLogBtn"  class="btn btn-ghost" style="font-size:11px;padding:4px 10px">Clear</button>
         <button id="closeDebugBtn" class="icon-btn">&#10005;</button>
       </div>
     </div>
     <div id="debugLog" class="debug-log"></div>
+    <div id="debugNet" class="debug-net hidden">
+      <div class="net-thead">
+        <span class="nc-status">Status</span>
+        <span class="nc-method">Method</span>
+        <span class="nc-type">Type</span>
+        <span class="nc-size">Size</span>
+        <span class="nc-time">Time</span>
+        <span class="nc-url">URL</span>
+      </div>
+      <div id="netRows" class="net-rows"></div>
+    </div>
   </div>
 
-  <!-- ── Empty / welcome state ───────────────────────────────────── -->
   <div id="emptyState" class="empty-state">
     <div class="empty-content">
       <div class="empty-icon">&#x2388;</div>
@@ -181,7 +153,6 @@
     </div>
   </div>
 
-  <!-- ── Connecting overlay ───────────────────────────────────────── -->
   <div id="connectingState" class="connecting-state hidden">
     <div class="connecting-content">
       <div class="connecting-icon">&#x2388;</div>
@@ -190,31 +161,18 @@
     </div>
   </div>
 
-  <!-- ── Toast container ─────────────────────────────────────────── -->
   <div id="toasts" class="toast-container"></div>
 
-  <!-- ── Bottom status bar ────────────────────────────────────────── -->
   <div id="statusBar" class="status-bar">
-    <div class="sb-item">
-      <span id="sbDot" class="sb-dot sb-dot-stopped"></span>
-      <span id="sbPfText">Port-forward: Stopped</span>
-    </div>
+    <div class="sb-item"><span id="sbDot" class="sb-dot sb-dot-stopped"></span><span id="sbPfText">Port-forward: Stopped</span></div>
     <div class="sb-sep-v"></div>
-    <div class="sb-item" id="sbUptimeWrap" style="display:none">
-      <span class="sb-label">&#9201;</span>
-      <span id="sbUptime">00:00:00</span>
-    </div>
+    <div class="sb-item" id="sbUptimeWrap" style="display:none"><span class="sb-label">&#9201;</span><span id="sbUptime">00:00:00</span></div>
     <div class="sb-item" id="sbBwWrap" style="display:none">
-      <span class="sb-label">&#8595;</span>
-      <span id="sbSpeed">0 KB/s</span>
-      <span class="sb-mid">&middot;</span>
-      <span id="sbTotal">0 B total</span>
+      <span class="sb-label">&#8595;</span><span id="sbSpeed">0 KB/s</span>
+      <span class="sb-mid">&middot;</span><span id="sbTotal">0 B total</span>
     </div>
     <div class="sb-spacer"></div>
-    <div class="sb-item">
-      <span class="sb-label">Context:</span>
-      <span id="sbCtxName">&mdash;</span>
-    </div>
+    <div class="sb-item"><span class="sb-label">Context:</span><span id="sbCtxName">&mdash;</span></div>
   </div>
 
   <script src="renderer.js"></script>

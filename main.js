@@ -34,14 +34,12 @@ function writeConfig(cfg) {
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2), 'utf8');
 }
 
-// Apply command-line switches BEFORE app.ready
 const initialConfig  = readConfig();
 const initialCluster = initialConfig.activeCluster;
 
 if (initialCluster) {
   const cc    = getEffectiveClusterConfig(initialConfig, initialCluster);
   const rules = buildHostResolverRules(initialConfig, initialCluster);
-
   if (rules) {
     app.commandLine.appendSwitch('host-resolver-rules', rules);
     app.commandLine.appendSwitch('host-rules', rules);
@@ -59,7 +57,6 @@ if (initialCluster) {
 
 process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true';
 
-// ── State ────────────────────────────────────────────────────────────────────
 const TOOLBAR_HEIGHT = 100;
 const SETTINGS_WIDTH = 400;
 const STATUS_HEIGHT  = 28;
@@ -72,7 +69,6 @@ let currentConfig      = initialConfig;
 let settingsOpen       = false;
 let browserVisible     = false;
 
-// ── Log buffer ────────────────────────────────────────────────────────────────
 const LOG_BUFFER_MAX = 500;
 let logBuffer = [];
 
@@ -80,23 +76,18 @@ function addLog(level, text) {
   const entry = { ts: Date.now(), level, text };
   logBuffer.push(entry);
   if (logBuffer.length > LOG_BUFFER_MAX) logBuffer.shift();
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('app-log', entry);
-  }
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('app-log', entry);
 }
 
-// ── Bandwidth stats ───────────────────────────────────────────────────────────
 let pfStartTime = 0, pfBytesDown = 0, pfBytesWindow = 0, pfKbps = 0;
 let pfStatsInterval = null;
 
 function formatSpeed(kbps) {
-  if (kbps >= 1000) return `${(kbps / 1000).toFixed(1)} MB/s`;
-  return `${kbps} KB/s`;
+  return kbps >= 1000 ? `${(kbps/1000).toFixed(1)} MB/s` : `${kbps} KB/s`;
 }
-
 function formatBytes(b) {
-  if (b >= 1048576) return `${(b / 1048576).toFixed(1)} MB`;
-  if (b >= 1024)    return `${(b / 1024).toFixed(1)} KB`;
+  if (b >= 1048576) return `${(b/1048576).toFixed(1)} MB`;
+  if (b >= 1024)    return `${(b/1024).toFixed(1)} KB`;
   return `${b} B`;
 }
 
@@ -120,15 +111,24 @@ function stopStatsTracking() {
   if (pfStatsInterval) { clearInterval(pfStatsInterval); pfStatsInterval = null; }
 }
 
-// ── kubectl helpers ───────────────────────────────────────────────────────────
+// Resolve bundled kubectl in production; fall back to system kubectl in dev
+function getKubectlBin() {
+  if (app.isPackaged) {
+    const name = process.platform === 'win32' ? 'kubectl.exe' : 'kubectl';
+    return path.join(process.resourcesPath, name);
+  }
+  return 'kubectl';
+}
+
 function kubeconfigFlag() {
   return currentConfig.kubeconfigPath ? `--kubeconfig="${currentConfig.kubeconfigPath}"` : '';
 }
 
 async function getKubeContexts() {
   try {
-    const kc = kubeconfigFlag();
-    const cmd = `kubectl config get-contexts -o name${kc ? ' ' + kc : ''}`;
+    const kubectl = getKubectlBin();
+    const kc  = kubeconfigFlag();
+    const cmd = `"${kubectl}" config get-contexts -o name${kc ? ' ' + kc : ''}`;
     const { stdout } = await execAsync(cmd, { timeout: 8000 });
     return stdout.trim().split('\n').filter(Boolean);
   } catch (e) {
@@ -139,28 +139,26 @@ async function getKubeContexts() {
 
 async function getCurrentKubeContext() {
   try {
-    const kc = kubeconfigFlag();
-    const cmd = `kubectl config current-context${kc ? ' ' + kc : ''}`;
+    const kubectl = getKubectlBin();
+    const kc  = kubeconfigFlag();
+    const cmd = `"${kubectl}" config current-context${kc ? ' ' + kc : ''}`;
     const { stdout } = await execAsync(cmd, { timeout: 5000 });
     return stdout.trim();
-  } catch (e) {
-    return null;
-  }
+  } catch (e) { return null; }
 }
 
 async function getIngressHosts(contextName) {
   try {
-    const ctxFlag = contextName ? `--context=${contextName}` : '';
-    const kc = kubeconfigFlag();
-    const cmd = `kubectl get ingress -A -o json ${ctxFlag}${kc ? ' ' + kc : ''}`.trim();
+    const kubectl  = getKubectlBin();
+    const ctxFlag  = contextName ? `--context=${contextName}` : '';
+    const kc       = kubeconfigFlag();
+    const cmd      = `"${kubectl}" get ingress -A -o json ${ctxFlag}${kc ? ' ' + kc : ''}`.trim();
     const { stdout } = await execAsync(cmd, { timeout: 12000 });
     const data  = JSON.parse(stdout);
     const hosts = new Set();
-    for (const item of (data.items || [])) {
-      for (const rule of (item.spec?.rules || [])) {
+    for (const item of (data.items || []))
+      for (const rule of (item.spec?.rules || []))
         if (rule.host) hosts.add(rule.host);
-      }
-    }
     return [...hosts];
   } catch (e) {
     addLog('err', `kubectl get ingress: ${e.message}`);
@@ -168,26 +166,21 @@ async function getIngressHosts(contextName) {
   }
 }
 
-// ── Port-forward ──────────────────────────────────────────────────────────────
 function sendStatus(status, message) {
   portForwardStatus = status;
   if (status === 'running') startStatsTracking();
   if (status === 'stopped' || status === 'error') stopStatsTracking();
   addLog(status === 'error' ? 'err' : 'info', `[status] ${status}${message ? ': ' + message : ''}`);
-  if (mainWindow && !mainWindow.isDestroyed()) {
+  if (mainWindow && !mainWindow.isDestroyed())
     mainWindow.webContents.send('port-forward-status', { status, message });
-  }
 }
 
 function startPortForward(contextName) {
   if (portForwardProcess) stopPortForward();
-
   const args = buildPortForwardArgs(currentConfig, contextName);
   addLog('info', `[pf] kubectl ${args.join(' ')}`);
   sendStatus('starting', `kubectl ${args.join(' ')}`);
-
-  portForwardProcess = spawn('kubectl', args, { stdio: ['ignore', 'pipe', 'pipe'] });
-
+  portForwardProcess = spawn(getKubectlBin(), args, { stdio: ['ignore', 'pipe', 'pipe'] });
   portForwardProcess.stdout.on('data', (data) => {
     const msg = data.toString().trim();
     addLog('info', `[pf] ${msg}`);
@@ -196,25 +189,21 @@ function startPortForward(contextName) {
       sendStatus('running', `Active on ${cc.localPort} → ${cc.remotePort}`);
     }
   });
-
   portForwardProcess.stderr.on('data', (data) => {
     const msg = data.toString().trim();
     addLog(/error/i.test(msg) ? 'err' : 'warn', `[pf stderr] ${msg}`);
     if (/error/i.test(msg)) sendStatus('error', msg.substring(0, 140));
   });
-
   portForwardProcess.on('error', (err) => {
     addLog('err', `[pf spawn] ${err.message}`);
     sendStatus('error', `kubectl not found: ${err.message}`);
     portForwardProcess = null;
   });
-
   portForwardProcess.on('close', (code) => {
     addLog('info', `[pf] process exited (${code})`);
     portForwardProcess = null;
-    if (portForwardStatus === 'running' || portForwardStatus === 'starting') {
+    if (portForwardStatus === 'running' || portForwardStatus === 'starting')
       sendStatus('error', `Port-forward stopped (exit ${code})`);
-    }
   });
 }
 
@@ -223,75 +212,88 @@ function stopPortForward() {
   sendStatus('stopped', 'Port-forward stopped');
 }
 
-// ── BrowserView layout ────────────────────────────────────────────────────────
 function updateBrowserViewBounds() {
   if (!browserView || !mainWindow || mainWindow.isDestroyed()) return;
   const [w, h] = mainWindow.getContentSize();
-  if (!browserVisible) {
-    browserView.setBounds({ x: 0, y: TOOLBAR_HEIGHT, width: 0, height: 0 });
-    return;
-  }
+  if (!browserVisible) { browserView.setBounds({ x: 0, y: TOOLBAR_HEIGHT, width: 0, height: 0 }); return; }
   const x  = settingsOpen ? SETTINGS_WIDTH : 0;
   const bw = settingsOpen ? Math.max(0, w - SETTINGS_WIDTH) : w;
   browserView.setBounds({ x, y: TOOLBAR_HEIGHT, width: bw, height: Math.max(0, h - TOOLBAR_HEIGHT - STATUS_HEIGHT) });
 }
 
-// ── Window creation ───────────────────────────────────────────────────────────
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400, height: 900, minWidth: 900, minHeight: 600,
     title: 'KubeRemoteWeb',
     backgroundColor: '#0f0f1a',
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration:  false
-    }
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false }
   });
 
   browserView = new BrowserView({
-    webPreferences: {
-      contextIsolation:            true,
-      nodeIntegration:             false,
-      allowRunningInsecureContent: true,
-      webSecurity:                 false
-    }
+    webPreferences: { contextIsolation: true, nodeIntegration: false, allowRunningInsecureContent: true, webSecurity: false }
   });
 
   mainWindow.addBrowserView(browserView);
 
   browserView.webContents.on('certificate-error', (event, _url, _err, _cert, callback) => {
-    event.preventDefault();
-    callback(true);
+    event.preventDefault(); callback(true);
   });
-
   browserView.webContents.on('did-navigate', (_e, url) => {
-    if (mainWindow && !mainWindow.isDestroyed())
-      mainWindow.webContents.send('browser-navigated', url);
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('browser-navigated', url);
   });
   browserView.webContents.on('did-navigate-in-page', (_e, url) => {
-    if (mainWindow && !mainWindow.isDestroyed())
-      mainWindow.webContents.send('browser-navigated', url);
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('browser-navigated', url);
+  });
+
+  // Track in-flight requests for timing and network monitor
+  const pendingRequests = new Map();
+
+  browserView.webContents.session.webRequest.onBeforeRequest((details, callback) => {
+    pendingRequests.set(details.id, { ts: Date.now(), method: details.method, url: details.url });
+    callback({});
   });
 
   browserView.webContents.session.webRequest.onCompleted((details) => {
-    if (portForwardStatus !== 'running') return;
-    const headers = details.responseHeaders || {};
-    const cl = parseInt(
-      headers['content-length']?.[0] || headers['Content-Length']?.[0] || '0', 10
-    );
-    if (!isNaN(cl) && cl > 0) pfBytesWindow += cl;
+    // Bandwidth accounting
+    if (portForwardStatus === 'running') {
+      const h  = details.responseHeaders || {};
+      const cl = parseInt(h['content-length']?.[0] || h['Content-Length']?.[0] || '0', 10);
+      if (!isNaN(cl) && cl > 0) pfBytesWindow += cl;
+    }
+    // Network monitor
+    const pending  = pendingRequests.get(details.id);
+    pendingRequests.delete(details.id);
+    const duration = pending ? Date.now() - pending.ts : 0;
+    const h        = details.responseHeaders || {};
+    const size     = parseInt(h['content-length']?.[0] || h['Content-Length']?.[0] || '0', 10) || 0;
+    const ct       = (h['content-type']?.[0] || h['Content-Type']?.[0] || '').split(';')[0].trim();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('net-request', {
+        ts: pending?.ts ?? Date.now(), method: details.method, url: details.url,
+        status: details.statusCode, type: ct, size, duration
+      });
+    }
+  });
+
+  browserView.webContents.session.webRequest.onErrorOccurred((details) => {
+    const pending  = pendingRequests.get(details.id);
+    pendingRequests.delete(details.id);
+    const duration = pending ? Date.now() - pending.ts : 0;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('net-request', {
+        ts: pending?.ts ?? Date.now(), method: details.method, url: details.url,
+        status: 0, error: details.error, type: '', size: 0, duration
+      });
+    }
   });
 
   browserView.setBounds({ x: 0, y: TOOLBAR_HEIGHT, width: 0, height: 0 });
-
   ['resize','maximize','unmaximize','enter-full-screen','leave-full-screen'].forEach(
     (ev) => mainWindow.on(ev, () => setTimeout(updateBrowserViewBounds, 50))
   );
 
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
   mainWindow.on('closed', () => { stopPortForward(); mainWindow = null; });
-
   addLog('info', `KubeRemoteWeb v${app.getVersion()} started`);
 
   if (!currentConfig.activeCluster) {
@@ -301,23 +303,17 @@ function createWindow() {
   }
 }
 
-// ── IPC handlers ──────────────────────────────────────────────────────────────
 ipcMain.handle('get-config',          ()        => currentConfig);
 ipcMain.handle('save-config',         (_e, cfg) => { currentConfig = cfg; writeConfig(currentConfig); return true; });
 ipcMain.handle('get-kube-contexts',   ()        => getKubeContexts());
 ipcMain.handle('get-current-context', ()        => getCurrentKubeContext());
 ipcMain.handle('get-ingress-hosts',   (_e, ctx) => getIngressHosts(ctx));
 ipcMain.handle('start-port-forward',  (_e, ctx) => { startPortForward(ctx); return true; });
-ipcMain.handle('stop-port-forward',   ()        => { stopPortForward();      return true; });
-
-ipcMain.handle('navigate-browser', (_e, url) => {
-  if (browserView) browserView.webContents.loadURL(url);
-  return true;
-});
+ipcMain.handle('stop-port-forward',   ()        => { stopPortForward(); return true; });
+ipcMain.handle('navigate-browser', (_e, url) => { if (browserView) browserView.webContents.loadURL(url); return true; });
 ipcMain.handle('browser-back',    () => browserView?.webContents.canGoBack()    && browserView.webContents.goBack());
 ipcMain.handle('browser-forward', () => browserView?.webContents.canGoForward() && browserView.webContents.goForward());
 ipcMain.handle('browser-reload',  () => browserView?.webContents.reload());
-
 ipcMain.handle('show-browser',    (_e, show) => { browserVisible = show; updateBrowserViewBounds(); return true; });
 ipcMain.handle('toggle-settings', (_e, open) => { settingsOpen   = open; updateBrowserViewBounds(); return true; });
 ipcMain.handle('open-external',   (_e, url)  => shell.openExternal(url));
@@ -341,7 +337,6 @@ ipcMain.handle('browse-kubeconfig', async () => {
   return filePaths[0];
 });
 
-// ── App lifecycle ─────────────────────────────────────────────────────────────
 app.whenReady().then(createWindow);
 app.on('window-all-closed', () => { stopPortForward(); if (process.platform !== 'darwin') app.quit(); });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
