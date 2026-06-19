@@ -21,8 +21,9 @@ contextBridge.exposeInMainWorld('kubeAPI', {
   getAppLogs:         ()      => ipcRenderer.invoke('get-app-logs'),
   browseKubeconfig:   ()      => ipcRenderer.invoke('browse-kubeconfig'),
 
-  onPFStatus:  (cb) => ipcRenderer.on('port-forward-status', (_e, d) => cb(d)),
-  onBrowserNav:(cb) => ipcRenderer.on('browser-navigated',   (_e, u) => cb(u)),
-  onAppLog:    (cb) => ipcRenderer.on('app-log',             (_e, e) => cb(e)),
-  onPFStats:   (cb) => ipcRenderer.on('pf-stats',            (_e, s) => cb(s))
+  onPFStatus:   (cb) => ipcRenderer.on('port-forward-status', (_e, d) => cb(d)),
+  onBrowserNav: (cb) => ipcRenderer.on('browser-navigated',   (_e, u) => cb(u)),
+  onAppLog:     (cb) => ipcRenderer.on('app-log',             (_e, e) => cb(e)),
+  onPFStats:    (cb) => ipcRenderer.on('pf-stats',            (_e, s) => cb(s)),
+  onNetRequest: (cb) => ipcRenderer.on('net-request',         (_e, r) => cb(r))
 });

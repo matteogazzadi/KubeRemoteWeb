@@ -121,8 +121,6 @@ function stopStatsTracking() {
 }
 
 // ── kubectl helpers ───────────────────────────────────────────────────────────
-// In production the binary is bundled inside the app's resources directory.
-// In development we fall back to the system kubectl on PATH.
 function getKubectlBin() {
   if (app.isPackaged) {
     const name = process.platform === 'win32' ? 'kubectl.exe' : 'kubectl';
@@ -287,13 +285,60 @@ function createWindow() {
       mainWindow.webContents.send('browser-navigated', url);
   });
 
+  // Track in-flight requests for timing; merged with bandwidth accounting
+  const pendingRequests = new Map();
+
+  browserView.webContents.session.webRequest.onBeforeRequest((details, callback) => {
+    pendingRequests.set(details.id, { ts: Date.now(), method: details.method, url: details.url });
+    callback({});
+  });
+
   browserView.webContents.session.webRequest.onCompleted((details) => {
-    if (portForwardStatus !== 'running') return;
-    const headers = details.responseHeaders || {};
-    const cl = parseInt(
-      headers['content-length']?.[0] || headers['Content-Length']?.[0] || '0', 10
-    );
-    if (!isNaN(cl) && cl > 0) pfBytesWindow += cl;
+    // Bandwidth tracking
+    if (portForwardStatus === 'running') {
+      const headers = details.responseHeaders || {};
+      const cl = parseInt(
+        headers['content-length']?.[0] || headers['Content-Length']?.[0] || '0', 10
+      );
+      if (!isNaN(cl) && cl > 0) pfBytesWindow += cl;
+    }
+
+    // Network monitor entry
+    const pending = pendingRequests.get(details.id);
+    pendingRequests.delete(details.id);
+    const duration = pending ? Date.now() - pending.ts : 0;
+    const headers  = details.responseHeaders || {};
+    const size     = parseInt(headers['content-length']?.[0] || headers['Content-Length']?.[0] || '0', 10) || 0;
+    const ct       = (headers['content-type']?.[0] || headers['Content-Type']?.[0] || '').split(';')[0].trim();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('net-request', {
+        ts: pending?.ts ?? Date.now(),
+        method:   details.method,
+        url:      details.url,
+        status:   details.statusCode,
+        type:     ct,
+        size,
+        duration
+      });
+    }
+  });
+
+  browserView.webContents.session.webRequest.onErrorOccurred((details) => {
+    const pending = pendingRequests.get(details.id);
+    pendingRequests.delete(details.id);
+    const duration = pending ? Date.now() - pending.ts : 0;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('net-request', {
+        ts: pending?.ts ?? Date.now(),
+        method:   details.method,
+        url:      details.url,
+        status:   0,
+        error:    details.error,
+        type:     '',
+        size:     0,
+        duration
+      });
+    }
   });
 
   browserView.setBounds({ x: 0, y: TOOLBAR_HEIGHT, width: 0, height: 0 });
