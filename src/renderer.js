@@ -54,14 +54,15 @@ const noIngressWarning    = document.getElementById('noIngressWarning');
 const noIngressOpenSettings = document.getElementById('noIngressOpenSettings');
 const noIngressDismiss    = document.getElementById('noIngressDismiss');
 
-let config         = null;
-let activeCtx      = null;
-let settingsOpen   = false;
-let debugOpen      = false;
-let browserActive  = false;
+let config          = null;
+let activeCtx       = null;
+let settingsOpen    = false;
+let debugOpen       = false;
+let browserActive   = false;
 let pendingNavigate = false;
-let connectGen     = 0;       // incremented on every new connect attempt or context switch
-let activeDebugTab = 'logs';
+let connectGen      = 0;    // incremented on every new connect attempt or context switch
+let connectActive   = false; // true while start handler is in-flight
+let activeDebugTab  = 'logs';
 
 function toast(msg, type = '', duration = 3500) {
   const el = document.createElement('div');
@@ -269,9 +270,10 @@ async function switchContext(ctxName) {
   if (ctxName === activeCtx) return;
   connectGen++;
   pendingNavigate = false;
+  connectActive   = false;
 
-  // Immediately reset UI so user can click Start without waiting
-  startBtn.disabled = false;
+  // Reset UI immediately — but keep Start disabled until stop IPC is flushed
+  startBtn.disabled = true;
   stopBtn.disabled  = true;
   statusBadge.className = 'status-badge status-stopped';
   statusText.textContent = 'Stopped';
@@ -279,14 +281,17 @@ async function switchContext(ctxName) {
   emptyState.classList.remove('hidden');
   connectingState.classList.add('hidden');
   noIngressWarning.classList.add('hidden');
-
-  kubeAPI.stopPortForward().catch(() => {});
-  activeCtx = ctxName; config.activeCluster = ctxName;
-  kubeAPI.saveConfig(config).catch(() => {});
   kubeAPI.showBrowser(false).catch(() => {});
   browserActive = false;
+
+  // Await stop so main.js processes it before any future startPortForward IPC
+  await kubeAPI.stopPortForward().catch(() => {});
+
+  activeCtx = ctxName; config.activeCluster = ctxName;
+  kubeAPI.saveConfig(config).catch(() => {});
   urlBar.value = effective(ctxName).startUrl || '';
   sbCtxName.textContent = ctxName;
+  startBtn.disabled = false;
   toast(`Switched to: ${ctxName}`);
 }
 
@@ -302,6 +307,12 @@ async function loadContexts() {
 }
 
 function applyStatus({ status, message }) {
+  // Ignore stale 'stopped' events that arrive after a new connect has started
+  if (connectActive && status === 'stopped') return;
+
+  if (status === 'running') connectActive = false;
+  if (status === 'error')   connectActive = false;
+
   statusBadge.className = `status-badge status-${status}`;
   const labels = { stopped: 'Stopped', starting: 'Starting…', running: 'Running', error: 'Error' };
   statusText.textContent = labels[status] || status;
@@ -327,10 +338,11 @@ refreshCtxBtn.addEventListener('click', loadContexts);
 startBtn.addEventListener('click', async () => {
   if (!activeCtx) { toast('Select a cluster context first', 'err'); return; }
   startBtn.disabled = true;
+  connectActive = true;
 
   const ctx = activeCtx;
   const gen = ++connectGen;
-  const stale = () => gen !== connectGen || activeCtx !== ctx;
+  const stale = () => { if (gen !== connectGen || activeCtx !== ctx) { connectActive = false; return true; } return false; };
 
   config.clusters = config.clusters || {};
   if (!config.clusters[ctx]) config.clusters[ctx] = {};
@@ -368,6 +380,7 @@ startBtn.addEventListener('click', async () => {
 
 stopBtn.addEventListener('click', async () => {
   pendingNavigate = false;
+  connectActive = false;
   await kubeAPI.stopPortForward(); await kubeAPI.showBrowser(false);
   browserActive = false; emptyState.classList.remove('hidden'); connectingState.classList.add('hidden');
 });
