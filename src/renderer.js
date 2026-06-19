@@ -46,6 +46,7 @@ const sbUptime           = document.getElementById('sbUptime');
 const sbSpeed            = document.getElementById('sbSpeed');
 const sbTotal            = document.getElementById('sbTotal');
 const sbCtxName          = document.getElementById('sbCtxName');
+const sbAppVersion       = document.getElementById('sbAppVersion');
 const sfKubeconfig        = document.getElementById('sfKubeconfig');
 const browseKubeconfigBtn = document.getElementById('browseKubeconfigBtn');
 const clearKubeconfigBtn  = document.getElementById('clearKubeconfigBtn');
@@ -58,6 +59,7 @@ let activeCtx      = null;
 let settingsOpen   = false;
 let debugOpen      = false;
 let browserActive  = false;
+let pendingNavigate = false;  // navigate to startUrl once port-forward reaches 'running'
 let activeDebugTab = 'logs';
 
 function toast(msg, type = '', duration = 3500) {
@@ -232,16 +234,18 @@ function collectClusterOverride(ctxName) {
 async function autoDiscoverFqdn(ctxName) {
   try {
     const hosts = await kubeAPI.getIngressHosts(ctxName);
-    if (!hosts.length) return;
-    const fqdn = hosts[0];
+    if (!hosts.length) return null;
+    const fqdn    = hosts[0];
+    const startUrl = `https://${fqdn}/web-app`;
     if (!config.clusters)          config.clusters          = {};
     if (!config.clusters[ctxName]) config.clusters[ctxName] = {};
     config.clusters[ctxName].fqdn     = fqdn;
-    config.clusters[ctxName].startUrl = `https://${fqdn}/web-app`;
+    config.clusters[ctxName].startUrl = startUrl;
     await kubeAPI.saveConfig(config);
-    urlBar.value = config.clusters[ctxName].startUrl;
+    urlBar.value = startUrl;
     toast(`Auto-detected FQDN: ${fqdn}`, 'ok');
-  } catch (_) {}
+    return startUrl;
+  } catch (_) { return null; }
 }
 
 function openSettings()  { settingsOpen = true;  settingsPanel.classList.add('open');    kubeAPI.toggleSettings(true);  populateSettingsForm(activeCtx); }
@@ -294,8 +298,15 @@ function applyStatus({ status, message }) {
   if (status === 'starting') { connectingMsg.innerHTML = 'Establishing port-forward to cluster.<br>Please wait.'; connectingState.classList.remove('hidden'); emptyState.classList.add('hidden'); }
   else { connectingState.classList.add('hidden'); }
   updateStatusBar(status);
-  if (status === 'running') toast(message || 'Port-forward active', 'ok');
-  if (status === 'error')   { toast(message || 'Port-forward error', 'err'); startBtn.disabled = false; }
+  if (status === 'running') {
+    toast(message || 'Port-forward active', 'ok');
+    if (pendingNavigate) {
+      pendingNavigate = false;
+      const url = urlBar.value.trim();
+      if (url) setTimeout(() => navigateTo(url), 500);
+    }
+  }
+  if (status === 'error') { pendingNavigate = false; toast(message || 'Port-forward error', 'err'); startBtn.disabled = false; }
 }
 
 contextSelect.addEventListener('change', (e) => switchContext(e.target.value));
@@ -305,29 +316,40 @@ startBtn.addEventListener('click', async () => {
   if (!activeCtx) { toast('Select a cluster context first', 'err'); return; }
   startBtn.disabled = true;
 
-  // Auto-detect ingress controller unless the user has already overridden it
-  const clusterOverride = (config.clusters || {})[activeCtx] || {};
-  if (!clusterOverride.service && !clusterOverride.namespace) {
+  config.clusters = config.clusters || {};
+  if (!config.clusters[activeCtx]) config.clusters[activeCtx] = {};
+  const cluster = config.clusters[activeCtx];
+
+  // Step 1: ensure ingress controller is known before anything else
+  if (!cluster.service || !cluster.namespace) {
     toast('Detecting ingress controller…');
     const detected = await kubeAPI.autoDetectIngress(activeCtx);
-    if (detected) {
-      config.clusters = config.clusters || {};
-      config.clusters[activeCtx] = { ...clusterOverride, service: detected.service, namespace: detected.namespace };
-      await kubeAPI.saveConfig(config);
-      toast(`Ingress: ${detected.namespace} / ${detected.service.replace('svc/', '')}`, 'ok');
-    } else {
+    if (!detected) {
       noIngressWarning.classList.remove('hidden');
       startBtn.disabled = false;
       return;
     }
+    cluster.service   = detected.service;
+    cluster.namespace = detected.namespace;
+    await kubeAPI.saveConfig(config);
+    toast(`Ingress: ${cluster.namespace} / ${cluster.service.replace('svc/', '')}`, 'ok');
   }
 
+  // Step 2: ensure FQDN and startUrl are known before starting the tunnel
+  if (!cluster.fqdn) {
+    toast('Detecting FQDN…');
+    await autoDiscoverFqdn(activeCtx);
+    // re-read after save inside autoDiscoverFqdn
+  }
+  urlBar.value = effective(activeCtx).startUrl || urlBar.value;
+
+  // Step 3: start port-forward; navigation fires when status → 'running'
+  pendingNavigate = !!urlBar.value.trim();
   await kubeAPI.startPortForward(activeCtx);
-  const eff = effective(activeCtx);
-  if (eff.startUrl) { urlBar.value = eff.startUrl; setTimeout(() => navigateTo(eff.startUrl), 2000); }
 });
 
 stopBtn.addEventListener('click', async () => {
+  pendingNavigate = false;
   await kubeAPI.stopPortForward(); await kubeAPI.showBrowser(false);
   browserActive = false; emptyState.classList.remove('hidden'); connectingState.classList.add('hidden');
 });
@@ -412,7 +434,9 @@ async function init() {
   config    = await kubeAPI.getConfig();
   activeCtx = config.activeCluster;
   stopBtn.disabled = true;
-  appVersionEl.textContent = `v${await kubeAPI.getAppVersion()}`;
+  const ver = `v${await kubeAPI.getAppVersion()}`;
+  appVersionEl.textContent = ver;
+  sbAppVersion.textContent  = ver;
   applyTheme(config.theme || 'dark');
   updateStatusBar('stopped');
   sbCtxName.textContent = activeCtx || '—';
