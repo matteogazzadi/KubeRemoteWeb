@@ -244,6 +244,12 @@ function createWindow() {
   browserView.webContents.on('did-navigate-in-page', (_e, url) => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('browser-navigated', url);
   });
+  browserView.webContents.on('did-finish-load', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('browser-page-loaded');
+  });
+  browserView.webContents.on('did-fail-load', (_e, code, desc) => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('browser-page-error', { code, desc });
+  });
 
   // Track in-flight requests for timing and network monitor
   const pendingRequests = new Map();

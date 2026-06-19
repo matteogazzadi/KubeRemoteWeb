@@ -21,9 +21,11 @@ contextBridge.exposeInMainWorld('kubeAPI', {
   getAppLogs:         ()      => ipcRenderer.invoke('get-app-logs'),
   browseKubeconfig:   ()      => ipcRenderer.invoke('browse-kubeconfig'),
 
-  onPFStatus:   (cb) => ipcRenderer.on('port-forward-status', (_e, d) => cb(d)),
-  onBrowserNav: (cb) => ipcRenderer.on('browser-navigated',   (_e, u) => cb(u)),
-  onAppLog:     (cb) => ipcRenderer.on('app-log',             (_e, e) => cb(e)),
-  onPFStats:    (cb) => ipcRenderer.on('pf-stats',            (_e, s) => cb(s)),
-  onNetRequest: (cb) => ipcRenderer.on('net-request',         (_e, r) => cb(r))
+  onPFStatus:    (cb) => ipcRenderer.on('port-forward-status', (_e, d) => cb(d)),
+  onBrowserNav:  (cb) => ipcRenderer.on('browser-navigated',   (_e, u) => cb(u)),
+  onAppLog:      (cb) => ipcRenderer.on('app-log',             (_e, e) => cb(e)),
+  onPFStats:     (cb) => ipcRenderer.on('pf-stats',            (_e, s) => cb(s)),
+  onNetRequest:  (cb) => ipcRenderer.on('net-request',         (_e, r) => cb(r)),
+  onPageLoaded:  (cb) => ipcRenderer.on('browser-page-loaded', (_e)    => cb()),
+  onPageError:   (cb) => ipcRenderer.on('browser-page-error',  (_e, e) => cb(e))
 });

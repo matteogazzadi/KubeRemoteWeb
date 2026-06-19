@@ -26,6 +26,7 @@ const saveDefaultsBtn    = document.getElementById('saveDefaultsBtn');
 const sfUseProxy         = document.getElementById('sfUseProxy');
 const proxyField         = document.getElementById('proxyField');
 const connectingState    = document.getElementById('connectingState');
+const connectingMsg      = document.getElementById('connectingMsg');
 const themeBtn           = document.getElementById('themeBtn');
 const debugBtn           = document.getElementById('debugBtn');
 const debugPanel         = document.getElementById('debugPanel');
@@ -248,11 +249,12 @@ async function navigateTo(rawUrl) {
   if (!url) return;
   if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
   urlBar.value = url;
+  emptyState.classList.add('hidden');
+  connectingMsg.innerHTML = 'Loading application&hellip;<br>Please wait.';
+  connectingState.classList.remove('hidden');
+  await kubeAPI.showBrowser(false);
   await kubeAPI.navigateBrowser(url);
   browserActive = true;
-  emptyState.classList.add('hidden');
-  connectingState.classList.add('hidden');
-  await kubeAPI.showBrowser(true);
 }
 
 async function switchContext(ctxName) {
@@ -286,7 +288,7 @@ function applyStatus({ status, message }) {
   statusText.textContent = labels[status] || status;
   startBtn.disabled = (status === 'starting' || status === 'running');
   stopBtn.disabled  = (status === 'stopped'  || status === 'error');
-  if (status === 'starting') { connectingState.classList.remove('hidden'); emptyState.classList.add('hidden'); }
+  if (status === 'starting') { connectingMsg.innerHTML = 'Establishing port-forward to cluster.<br>Please wait.'; connectingState.classList.remove('hidden'); emptyState.classList.add('hidden'); }
   else { connectingState.classList.add('hidden'); }
   updateStatusBar(status);
   if (status === 'running') toast(message || 'Port-forward active', 'ok');
@@ -372,6 +374,15 @@ kubeAPI.onPFStats(({ uptime, speedLabel, totalLabel }) => {
   sbUptime.textContent = fmtUptime(uptime); sbSpeed.textContent = speedLabel; sbTotal.textContent = `${totalLabel} total`;
 });
 kubeAPI.onNetRequest((req) => appendNetRequest(req));
+
+kubeAPI.onPageLoaded(() => {
+  connectingState.classList.add('hidden');
+  if (browserActive) kubeAPI.showBrowser(true);
+});
+kubeAPI.onPageError(() => {
+  connectingState.classList.add('hidden');
+  if (browserActive) kubeAPI.showBrowser(true);
+});
 
 async function init() {
   config    = await kubeAPI.getConfig();
