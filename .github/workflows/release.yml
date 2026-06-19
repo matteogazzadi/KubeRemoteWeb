@@ -23,14 +23,14 @@ jobs:
         include:
           - os: windows-latest
             build_cmd:    npm run build:win
-            artifact_glob: dist/*.exe
+            artifact_glob: "dist/*.exe"
             kubectl_os:   windows
             kubectl_arch: amd64
             kubectl_name: kubectl.exe
 
           - os: macos-latest
             build_cmd:    npm run build:mac
-            artifact_glob: dist/*.dmg
+            artifact_glob: "dist/*.{dmg,zip}"
             kubectl_os:   darwin
             kubectl_arch: arm64
             kubectl_name: kubectl
