@@ -269,13 +269,22 @@ async function switchContext(ctxName) {
   if (ctxName === activeCtx) return;
   connectGen++;
   pendingNavigate = false;
+
+  // Immediately reset UI so user can click Start without waiting
   startBtn.disabled = false;
-  await kubeAPI.stopPortForward();
+  stopBtn.disabled  = true;
+  statusBadge.className = 'status-badge status-stopped';
+  statusText.textContent = 'Stopped';
+  updateStatusBar('stopped');
+  emptyState.classList.remove('hidden');
+  connectingState.classList.add('hidden');
+  noIngressWarning.classList.add('hidden');
+
+  kubeAPI.stopPortForward().catch(() => {});
   activeCtx = ctxName; config.activeCluster = ctxName;
-  await kubeAPI.saveConfig(config);
-  await kubeAPI.showBrowser(false);
+  kubeAPI.saveConfig(config).catch(() => {});
+  kubeAPI.showBrowser(false).catch(() => {});
   browserActive = false;
-  emptyState.classList.remove('hidden'); connectingState.classList.add('hidden'); noIngressWarning.classList.add('hidden');
   urlBar.value = effective(ctxName).startUrl || '';
   sbCtxName.textContent = ctxName;
   toast(`Switched to: ${ctxName}`);
