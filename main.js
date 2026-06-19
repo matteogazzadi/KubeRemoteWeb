@@ -121,14 +121,25 @@ function stopStatsTracking() {
 }
 
 // ── kubectl helpers ───────────────────────────────────────────────────────────
+// In production the binary is bundled inside the app's resources directory.
+// In development we fall back to the system kubectl on PATH.
+function getKubectlBin() {
+  if (app.isPackaged) {
+    const name = process.platform === 'win32' ? 'kubectl.exe' : 'kubectl';
+    return path.join(process.resourcesPath, name);
+  }
+  return 'kubectl';
+}
+
 function kubeconfigFlag() {
   return currentConfig.kubeconfigPath ? `--kubeconfig="${currentConfig.kubeconfigPath}"` : '';
 }
 
 async function getKubeContexts() {
   try {
+    const kubectl = getKubectlBin();
     const kc = kubeconfigFlag();
-    const cmd = `kubectl config get-contexts -o name${kc ? ' ' + kc : ''}`;
+    const cmd = `"${kubectl}" config get-contexts -o name${kc ? ' ' + kc : ''}`;
     const { stdout } = await execAsync(cmd, { timeout: 8000 });
     return stdout.trim().split('\n').filter(Boolean);
   } catch (e) {
@@ -139,8 +150,9 @@ async function getKubeContexts() {
 
 async function getCurrentKubeContext() {
   try {
+    const kubectl = getKubectlBin();
     const kc = kubeconfigFlag();
-    const cmd = `kubectl config current-context${kc ? ' ' + kc : ''}`;
+    const cmd = `"${kubectl}" config current-context${kc ? ' ' + kc : ''}`;
     const { stdout } = await execAsync(cmd, { timeout: 5000 });
     return stdout.trim();
   } catch (e) {
@@ -150,9 +162,10 @@ async function getCurrentKubeContext() {
 
 async function getIngressHosts(contextName) {
   try {
+    const kubectl = getKubectlBin();
     const ctxFlag = contextName ? `--context=${contextName}` : '';
     const kc = kubeconfigFlag();
-    const cmd = `kubectl get ingress -A -o json ${ctxFlag}${kc ? ' ' + kc : ''}`.trim();
+    const cmd = `"${kubectl}" get ingress -A -o json ${ctxFlag}${kc ? ' ' + kc : ''}`.trim();
     const { stdout } = await execAsync(cmd, { timeout: 12000 });
     const data  = JSON.parse(stdout);
     const hosts = new Set();
@@ -186,7 +199,7 @@ function startPortForward(contextName) {
   addLog('info', `[pf] kubectl ${args.join(' ')}`);
   sendStatus('starting', `kubectl ${args.join(' ')}`);
 
-  portForwardProcess = spawn('kubectl', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  portForwardProcess = spawn(getKubectlBin(), args, { stdio: ['ignore', 'pipe', 'pipe'] });
 
   portForwardProcess.stdout.on('data', (data) => {
     const msg = data.toString().trim();
