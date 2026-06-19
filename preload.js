@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('kubeAPI', {
   getAppVersion:      ()      => ipcRenderer.invoke('get-app-version'),
   getAppLogs:         ()      => ipcRenderer.invoke('get-app-logs'),
   browseKubeconfig:   ()      => ipcRenderer.invoke('browse-kubeconfig'),
+  autoDetectIngress:  (ctx)   => ipcRenderer.invoke('auto-detect-ingress', ctx),
 
   onPFStatus:    (cb) => ipcRenderer.on('port-forward-status', (_e, d) => cb(d)),
   onBrowserNav:  (cb) => ipcRenderer.on('browser-navigated',   (_e, u) => cb(u)),

@@ -46,9 +46,12 @@ const sbUptime           = document.getElementById('sbUptime');
 const sbSpeed            = document.getElementById('sbSpeed');
 const sbTotal            = document.getElementById('sbTotal');
 const sbCtxName          = document.getElementById('sbCtxName');
-const sfKubeconfig       = document.getElementById('sfKubeconfig');
+const sfKubeconfig        = document.getElementById('sfKubeconfig');
 const browseKubeconfigBtn = document.getElementById('browseKubeconfigBtn');
-const clearKubeconfigBtn = document.getElementById('clearKubeconfigBtn');
+const clearKubeconfigBtn  = document.getElementById('clearKubeconfigBtn');
+const noIngressWarning    = document.getElementById('noIngressWarning');
+const noIngressOpenSettings = document.getElementById('noIngressOpenSettings');
+const noIngressDismiss    = document.getElementById('noIngressDismiss');
 
 let config         = null;
 let activeCtx      = null;
@@ -264,7 +267,7 @@ async function switchContext(ctxName) {
   await kubeAPI.saveConfig(config);
   await kubeAPI.showBrowser(false);
   browserActive = false;
-  emptyState.classList.remove('hidden'); connectingState.classList.add('hidden');
+  emptyState.classList.remove('hidden'); connectingState.classList.add('hidden'); noIngressWarning.classList.add('hidden');
   urlBar.value = effective(ctxName).startUrl || '';
   sbCtxName.textContent = ctxName;
   toast(`Switched to: ${ctxName}`);
@@ -301,6 +304,24 @@ refreshCtxBtn.addEventListener('click', loadContexts);
 startBtn.addEventListener('click', async () => {
   if (!activeCtx) { toast('Select a cluster context first', 'err'); return; }
   startBtn.disabled = true;
+
+  // Auto-detect ingress controller unless the user has already overridden it
+  const clusterOverride = (config.clusters || {})[activeCtx] || {};
+  if (!clusterOverride.service && !clusterOverride.namespace) {
+    toast('Detecting ingress controller…');
+    const detected = await kubeAPI.autoDetectIngress(activeCtx);
+    if (detected) {
+      config.clusters = config.clusters || {};
+      config.clusters[activeCtx] = { ...clusterOverride, service: detected.service, namespace: detected.namespace };
+      await kubeAPI.saveConfig(config);
+      toast(`Ingress: ${detected.namespace} / ${detected.service.replace('svc/', '')}`, 'ok');
+    } else {
+      noIngressWarning.classList.remove('hidden');
+      startBtn.disabled = false;
+      return;
+    }
+  }
+
   await kubeAPI.startPortForward(activeCtx);
   const eff = effective(activeCtx);
   if (eff.startUrl) { urlBar.value = eff.startUrl; setTimeout(() => navigateTo(eff.startUrl), 2000); }
@@ -317,6 +338,9 @@ cancelBtn.addEventListener('click', closeSettings);
 themeBtn.addEventListener('click', toggleTheme);
 debugBtn.addEventListener('click', () => debugOpen ? closeDebug() : openDebug());
 closeDebugBtn.addEventListener('click', closeDebug);
+
+noIngressOpenSettings.addEventListener('click', () => { noIngressWarning.classList.add('hidden'); openSettings(); });
+noIngressDismiss.addEventListener('click',      () => { noIngressWarning.classList.add('hidden'); });
 
 browseKubeconfigBtn.addEventListener('click', async () => {
   const p = await kubeAPI.browseKubeconfig();
