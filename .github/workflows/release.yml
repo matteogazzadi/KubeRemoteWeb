@@ -30,7 +30,7 @@ jobs:
 
           - os: macos-latest
             build_cmd:    npm run build:mac
-            artifact_glob: "dist/*.{dmg,zip}"
+            artifact_glob: dist/*.dmg
             kubectl_os:   darwin
             kubectl_arch: arm64
             kubectl_name: kubectl

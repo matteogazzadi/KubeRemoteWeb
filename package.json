@@ -8,12 +8,9 @@
     "test":          "jest",
     "test:watch":    "jest --watch",
     "test:coverage": "jest --coverage",
-    "build:win":            "electron-builder --win",
-    "build:mac":            "electron-builder --mac",
-    "build:linux":          "electron-builder --linux",
-    "build:win:portable":   "electron-builder --win portable",
-    "build:mac:zip":        "electron-builder --mac zip",
-    "build:linux:appimage": "electron-builder --linux AppImage"
+    "build:win":   "electron-builder --win",
+    "build:mac":   "electron-builder --mac",
+    "build:linux": "electron-builder --linux"
   },
   "jest": {
     "testEnvironment": "node",
@@ -31,11 +28,11 @@
     "directories": { "output": "dist" },
     "files": ["main.js", "preload.js", "src/**"],
     "win": {
-      "target": ["nsis", "portable"],
+      "target": ["nsis"],
       "extraResources": [{ "from": "bin/kubectl.exe", "to": "kubectl.exe" }]
     },
     "mac": {
-      "target": ["dmg", "zip"],
+      "target": ["dmg"],
       "extraResources": [{ "from": "bin/kubectl", "to": "kubectl" }]
     },
     "linux": {
@@ -45,9 +42,6 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
-    },
-    "portable": {
-      "artifactName": "${productName}-${version}-portable.exe"
     }
   }
 }
