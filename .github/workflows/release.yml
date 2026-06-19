@@ -47,6 +47,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Stamp version into package.json
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          fi
+          VERSION="${VERSION#v}"
+          npm pkg set version="${VERSION}"
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
