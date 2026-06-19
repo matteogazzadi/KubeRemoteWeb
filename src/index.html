@@ -153,11 +153,24 @@
     </div>
   </div>
 
+  <div id="noIngressWarning" class="no-ingress-overlay hidden">
+    <div class="no-ingress-box">
+      <div class="no-ingress-icon">&#9888;</div>
+      <h2>Ingress Controller Not Found</h2>
+      <p>No known ingress controller was detected in this cluster.<br>
+         Please configure the <strong>Service</strong> and <strong>Namespace</strong> manually.</p>
+      <div class="no-ingress-actions">
+        <button id="noIngressOpenSettings" class="btn btn-primary">Open Settings</button>
+        <button id="noIngressDismiss" class="btn btn-ghost">Dismiss</button>
+      </div>
+    </div>
+  </div>
+
   <div id="connectingState" class="connecting-state hidden">
     <div class="connecting-content">
       <div class="connecting-icon">&#x2388;</div>
       <h2>Connecting&hellip;</h2>
-      <p>Establishing port-forward to cluster.<br>Please wait.</p>
+      <p id="connectingMsg">Establishing port-forward to cluster.<br>Please wait.</p>
     </div>
   </div>
 

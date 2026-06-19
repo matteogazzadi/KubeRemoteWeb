@@ -136,6 +136,14 @@ html,body{height:100vh;overflow:hidden;background:var(--bg0);color:var(--txt);fo
 .empty-content h2{font-size:24px;font-weight:700;margin-bottom:14px}
 .empty-content p{color:var(--txt2);line-height:1.65;margin-bottom:8px}
 /* Connecting overlay */
+/* No-ingress warning overlay */
+.no-ingress-overlay{position:fixed;top:var(--top);left:0;right:0;bottom:var(--sb);display:flex;align-items:center;justify-content:center;z-index:20;background:rgba(0,0,0,.45)}
+.no-ingress-overlay.hidden{display:none}
+.no-ingress-box{background:var(--bg1);border:1px solid var(--warn);border-radius:12px;text-align:center;max-width:480px;padding:40px 48px;box-shadow:0 8px 40px rgba(0,0,0,.5)}
+.no-ingress-icon{font-size:56px;color:var(--warn);line-height:1;margin-bottom:18px}
+.no-ingress-box h2{font-size:22px;font-weight:700;margin-bottom:12px;color:var(--warn)}
+.no-ingress-box p{color:var(--txt2);line-height:1.65;margin-bottom:24px}
+.no-ingress-actions{display:flex;gap:10px;justify-content:center}
 .connecting-state{position:fixed;top:var(--top);left:0;right:0;bottom:var(--sb);display:flex;align-items:center;justify-content:center;z-index:10;pointer-events:none}
 .connecting-state.hidden{display:none}
 .connecting-content{text-align:center;max-width:440px;padding:40px;pointer-events:auto}

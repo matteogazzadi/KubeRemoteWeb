@@ -26,6 +26,7 @@ const saveDefaultsBtn    = document.getElementById('saveDefaultsBtn');
 const sfUseProxy         = document.getElementById('sfUseProxy');
 const proxyField         = document.getElementById('proxyField');
 const connectingState    = document.getElementById('connectingState');
+const connectingMsg      = document.getElementById('connectingMsg');
 const themeBtn           = document.getElementById('themeBtn');
 const debugBtn           = document.getElementById('debugBtn');
 const debugPanel         = document.getElementById('debugPanel');
@@ -45,9 +46,12 @@ const sbUptime           = document.getElementById('sbUptime');
 const sbSpeed            = document.getElementById('sbSpeed');
 const sbTotal            = document.getElementById('sbTotal');
 const sbCtxName          = document.getElementById('sbCtxName');
-const sfKubeconfig       = document.getElementById('sfKubeconfig');
+const sfKubeconfig        = document.getElementById('sfKubeconfig');
 const browseKubeconfigBtn = document.getElementById('browseKubeconfigBtn');
-const clearKubeconfigBtn = document.getElementById('clearKubeconfigBtn');
+const clearKubeconfigBtn  = document.getElementById('clearKubeconfigBtn');
+const noIngressWarning    = document.getElementById('noIngressWarning');
+const noIngressOpenSettings = document.getElementById('noIngressOpenSettings');
+const noIngressDismiss    = document.getElementById('noIngressDismiss');
 
 let config         = null;
 let activeCtx      = null;
@@ -248,11 +252,12 @@ async function navigateTo(rawUrl) {
   if (!url) return;
   if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
   urlBar.value = url;
+  emptyState.classList.add('hidden');
+  connectingMsg.innerHTML = 'Loading application&hellip;<br>Please wait.';
+  connectingState.classList.remove('hidden');
+  await kubeAPI.showBrowser(false);
   await kubeAPI.navigateBrowser(url);
   browserActive = true;
-  emptyState.classList.add('hidden');
-  connectingState.classList.add('hidden');
-  await kubeAPI.showBrowser(true);
 }
 
 async function switchContext(ctxName) {
@@ -262,7 +267,7 @@ async function switchContext(ctxName) {
   await kubeAPI.saveConfig(config);
   await kubeAPI.showBrowser(false);
   browserActive = false;
-  emptyState.classList.remove('hidden'); connectingState.classList.add('hidden');
+  emptyState.classList.remove('hidden'); connectingState.classList.add('hidden'); noIngressWarning.classList.add('hidden');
   urlBar.value = effective(ctxName).startUrl || '';
   sbCtxName.textContent = ctxName;
   toast(`Switched to: ${ctxName}`);
@@ -286,7 +291,7 @@ function applyStatus({ status, message }) {
   statusText.textContent = labels[status] || status;
   startBtn.disabled = (status === 'starting' || status === 'running');
   stopBtn.disabled  = (status === 'stopped'  || status === 'error');
-  if (status === 'starting') { connectingState.classList.remove('hidden'); emptyState.classList.add('hidden'); }
+  if (status === 'starting') { connectingMsg.innerHTML = 'Establishing port-forward to cluster.<br>Please wait.'; connectingState.classList.remove('hidden'); emptyState.classList.add('hidden'); }
   else { connectingState.classList.add('hidden'); }
   updateStatusBar(status);
   if (status === 'running') toast(message || 'Port-forward active', 'ok');
@@ -299,6 +304,24 @@ refreshCtxBtn.addEventListener('click', loadContexts);
 startBtn.addEventListener('click', async () => {
   if (!activeCtx) { toast('Select a cluster context first', 'err'); return; }
   startBtn.disabled = true;
+
+  // Auto-detect ingress controller unless the user has already overridden it
+  const clusterOverride = (config.clusters || {})[activeCtx] || {};
+  if (!clusterOverride.service && !clusterOverride.namespace) {
+    toast('Detecting ingress controller…');
+    const detected = await kubeAPI.autoDetectIngress(activeCtx);
+    if (detected) {
+      config.clusters = config.clusters || {};
+      config.clusters[activeCtx] = { ...clusterOverride, service: detected.service, namespace: detected.namespace };
+      await kubeAPI.saveConfig(config);
+      toast(`Ingress: ${detected.namespace} / ${detected.service.replace('svc/', '')}`, 'ok');
+    } else {
+      noIngressWarning.classList.remove('hidden');
+      startBtn.disabled = false;
+      return;
+    }
+  }
+
   await kubeAPI.startPortForward(activeCtx);
   const eff = effective(activeCtx);
   if (eff.startUrl) { urlBar.value = eff.startUrl; setTimeout(() => navigateTo(eff.startUrl), 2000); }
@@ -315,6 +338,9 @@ cancelBtn.addEventListener('click', closeSettings);
 themeBtn.addEventListener('click', toggleTheme);
 debugBtn.addEventListener('click', () => debugOpen ? closeDebug() : openDebug());
 closeDebugBtn.addEventListener('click', closeDebug);
+
+noIngressOpenSettings.addEventListener('click', () => { noIngressWarning.classList.add('hidden'); openSettings(); });
+noIngressDismiss.addEventListener('click',      () => { noIngressWarning.classList.add('hidden'); });
 
 browseKubeconfigBtn.addEventListener('click', async () => {
   const p = await kubeAPI.browseKubeconfig();
@@ -372,6 +398,15 @@ kubeAPI.onPFStats(({ uptime, speedLabel, totalLabel }) => {
   sbUptime.textContent = fmtUptime(uptime); sbSpeed.textContent = speedLabel; sbTotal.textContent = `${totalLabel} total`;
 });
 kubeAPI.onNetRequest((req) => appendNetRequest(req));
+
+kubeAPI.onPageLoaded(() => {
+  connectingState.classList.add('hidden');
+  if (browserActive) kubeAPI.showBrowser(true);
+});
+kubeAPI.onPageError(() => {
+  connectingState.classList.add('hidden');
+  if (browserActive) kubeAPI.showBrowser(true);
+});
 
 async function init() {
   config    = await kubeAPI.getConfig();

@@ -166,6 +166,30 @@ async function getIngressHosts(contextName) {
   }
 }
 
+const INGRESS_CANDIDATES = [
+  { service: 'svc/tp-ingress-controller',             namespace: 'tp-ingress-controller' },
+  { service: 'svc/nginx-ingress-nginx-ingress-controller', namespace: 'nginx-ingress'   },
+];
+
+async function autoDetectIngress(contextName) {
+  const kubectl  = getKubectlBin();
+  const ctxFlag  = contextName ? `--context=${contextName}` : '';
+  const kc       = kubeconfigFlag();
+  for (const candidate of INGRESS_CANDIDATES) {
+    try {
+      const svcName = candidate.service.replace(/^svc\//, '');
+      const cmd = `"${kubectl}" get svc ${svcName} -n ${candidate.namespace} ${ctxFlag}${kc ? ' ' + kc : ''}`.trim();
+      await execAsync(cmd, { timeout: 10000 });
+      addLog('info', `[auto-detect] found ${candidate.service} in ${candidate.namespace}`);
+      return candidate;
+    } catch (_) {
+      // not found, try next
+    }
+  }
+  addLog('warn', '[auto-detect] no known ingress controller found');
+  return null;
+}
+
 function sendStatus(status, message) {
   portForwardStatus = status;
   if (status === 'running') startStatsTracking();
@@ -244,6 +268,12 @@ function createWindow() {
   browserView.webContents.on('did-navigate-in-page', (_e, url) => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('browser-navigated', url);
   });
+  browserView.webContents.on('did-finish-load', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('browser-page-loaded');
+  });
+  browserView.webContents.on('did-fail-load', (_e, code, desc) => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('browser-page-error', { code, desc });
+  });
 
   // Track in-flight requests for timing and network monitor
   const pendingRequests = new Map();
@@ -307,7 +337,8 @@ ipcMain.handle('get-config',          ()        => currentConfig);
 ipcMain.handle('save-config',         (_e, cfg) => { currentConfig = cfg; writeConfig(currentConfig); return true; });
 ipcMain.handle('get-kube-contexts',   ()        => getKubeContexts());
 ipcMain.handle('get-current-context', ()        => getCurrentKubeContext());
-ipcMain.handle('get-ingress-hosts',   (_e, ctx) => getIngressHosts(ctx));
+ipcMain.handle('get-ingress-hosts',    (_e, ctx) => getIngressHosts(ctx));
+ipcMain.handle('auto-detect-ingress',  (_e, ctx) => autoDetectIngress(ctx));
 ipcMain.handle('start-port-forward',  (_e, ctx) => { startPortForward(ctx); return true; });
 ipcMain.handle('stop-port-forward',   ()        => { stopPortForward(); return true; });
 ipcMain.handle('navigate-browser', (_e, url) => { if (browserView) browserView.webContents.loadURL(url); return true; });
