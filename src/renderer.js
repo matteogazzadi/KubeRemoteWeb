@@ -1,7 +1,7 @@
 /* global kubeAPI */
 'use strict';
 
-// ── DOM refs ─────────────────────────────────────────────────────
+// ── DOM refs ────────────────────────────────────────────────────────────────
 const contextSelect      = document.getElementById('contextSelect');
 const refreshCtxBtn      = document.getElementById('refreshCtxBtn');
 const startBtn           = document.getElementById('startBtn');
@@ -32,7 +32,11 @@ const debugBtn           = document.getElementById('debugBtn');
 const debugPanel         = document.getElementById('debugPanel');
 const closeDebugBtn      = document.getElementById('closeDebugBtn');
 const debugLog           = document.getElementById('debugLog');
+const debugNet           = document.getElementById('debugNet');
+const netRows            = document.getElementById('netRows');
 const clearLogBtn        = document.getElementById('clearLogBtn');
+const tabLogs            = document.getElementById('tabLogs');
+const tabNetwork         = document.getElementById('tabNetwork');
 const appVersionEl       = document.getElementById('appVersion');
 const sbDot              = document.getElementById('sbDot');
 const sbPfText           = document.getElementById('sbPfText');
@@ -46,14 +50,15 @@ const sfKubeconfig       = document.getElementById('sfKubeconfig');
 const browseKubeconfigBtn = document.getElementById('browseKubeconfigBtn');
 const clearKubeconfigBtn = document.getElementById('clearKubeconfigBtn');
 
-// ── State ─────────────────────────────────────────────────────
+// ── State ──────────────────────────────────────────────────────────────
 let config        = null;
 let activeCtx     = null;
 let settingsOpen  = false;
 let debugOpen     = false;
 let browserActive = false;
+let activeDebugTab = 'logs'; // 'logs' | 'network'
 
-// ── Toast ─────────────────────────────────────────────────────
+// ── Toast ─────────────────────────────────────────────────────────────
 function toast(msg, type = '', duration = 3500) {
   const container = document.getElementById('toasts');
   const el = document.createElement('div');
@@ -67,7 +72,7 @@ function toast(msg, type = '', duration = 3500) {
   }, duration);
 }
 
-// ── Theme ─────────────────────────────────────────────────────
+// ── Theme ─────────────────────────────────────────────────────────────
 function applyTheme(theme) {
   if (theme === 'light') {
     document.body.classList.add('light-theme');
@@ -87,7 +92,19 @@ function toggleTheme() {
   kubeAPI.saveConfig(config).catch(() => {});
 }
 
-// ── Debug log panel ───────────────────────────────────────────
+// ── Debug panel tabs ──────────────────────────────────────────────────────
+function switchDebugTab(tab) {
+  activeDebugTab = tab;
+  tabLogs.classList.toggle('active', tab === 'logs');
+  tabNetwork.classList.toggle('active', tab === 'network');
+  debugLog.classList.toggle('hidden', tab !== 'logs');
+  debugNet.classList.toggle('hidden', tab !== 'network');
+}
+
+tabLogs.addEventListener('click',    () => switchDebugTab('logs'));
+tabNetwork.addEventListener('click', () => switchDebugTab('network'));
+
+// ── Debug log ─────────────────────────────────────────────────────────────
 function fmtLogTime(ts) {
   return new Date(ts).toTimeString().slice(0, 8);
 }
@@ -118,6 +135,87 @@ function appendLog(entry) {
   if (atBottom) debugLog.scrollTop = debugLog.scrollHeight;
 }
 
+// ── Network monitor ────────────────────────────────────────────────────────
+function fmtSize(bytes) {
+  if (!bytes) return '—';
+  if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(1)} MB`;
+  if (bytes >= 1024)    return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${bytes} B`;
+}
+
+function fmtDuration(ms) {
+  if (ms >= 1000) return `${(ms / 1000).toFixed(2)} s`;
+  return `${ms} ms`;
+}
+
+function statusClass(status, error) {
+  if (error || !status) return 'ns-err';
+  if (status >= 500)    return 'ns-5xx';
+  if (status >= 400)    return 'ns-4xx';
+  if (status >= 300)    return 'ns-3xx';
+  return 'ns-2xx';
+}
+
+function shortType(ct) {
+  if (!ct) return '';
+  if (ct.includes('javascript')) return 'js';
+  if (ct.includes('css'))        return 'css';
+  if (ct.includes('html'))       return 'html';
+  if (ct.includes('json'))       return 'json';
+  if (ct.includes('image'))      return ct.replace('image/', '');
+  if (ct.includes('font'))       return 'font';
+  if (ct.includes('wasm'))       return 'wasm';
+  const slash = ct.lastIndexOf('/');
+  return slash >= 0 ? ct.slice(slash + 1) : ct;
+}
+
+function urlName(url) {
+  try {
+    const u = new URL(url);
+    const parts = u.pathname.split('/').filter(Boolean);
+    return parts.length ? parts[parts.length - 1] : u.hostname;
+  } catch { return url; }
+}
+
+function appendNetRequest(req) {
+  const atBottom = netRows.scrollHeight - netRows.scrollTop - netRows.clientHeight < 60;
+
+  const row = document.createElement('div');
+  row.className = 'net-row';
+  row.title = req.url;
+
+  const sc = statusClass(req.status, req.error);
+  const statusLabel = req.error ? 'ERR' : (req.status || '—');
+
+  row.innerHTML = `
+    <span class="nc-status"><span class="net-status ${sc}">${statusLabel}</span></span>
+    <span class="nc-method net-method">${req.method}</span>
+    <span class="nc-type net-dim">${shortType(req.type)}</span>
+    <span class="nc-size net-dim">${fmtSize(req.size)}</span>
+    <span class="nc-time net-dim">${fmtDuration(req.duration)}</span>
+    <span class="nc-url net-url">${urlName(req.url)}</span>
+  `;
+
+  // expand full URL on click
+  row.addEventListener('click', () => row.classList.toggle('expanded'));
+
+  const detail = document.createElement('div');
+  detail.className = 'net-detail';
+  detail.textContent = req.url;
+  row.appendChild(detail);
+
+  netRows.appendChild(row);
+  if (atBottom) netRows.scrollTop = netRows.scrollHeight;
+}
+
+// ── Clear button ────────────────────────────────────────────────────────────
+function clearActiveTab() {
+  if (activeDebugTab === 'logs')    debugLog.innerHTML = '';
+  if (activeDebugTab === 'network') netRows.innerHTML  = '';
+}
+clearLogBtn.addEventListener('click', clearActiveTab);
+
+// ── Debug panel open/close ──────────────────────────────────────────────
 function openDebug() {
   debugOpen = true;
   debugPanel.classList.add('open');
@@ -128,7 +226,7 @@ function closeDebug() {
   debugPanel.classList.remove('open');
 }
 
-// ── Status bar ──────────────────────────────────────────────────
+// ── Status bar ──────────────────────────────────────────────────────────────
 function fmtUptime(s) {
   const h   = Math.floor(s / 3600);
   const m   = Math.floor((s % 3600) / 60);
@@ -155,14 +253,14 @@ function updateStatusBar(status) {
   }
 }
 
-// ── Kubeconfig display ──────────────────────────────────────────
+// ── Kubeconfig display ──────────────────────────────────────────────────────
 function updateKubeconfigDisplay() {
   const p = config.kubeconfigPath || '';
   sfKubeconfig.value = p;
   clearKubeconfigBtn.style.display = p ? '' : 'none';
 }
 
-// ── Config helpers ───────────────────────────────────────────────
+// ── Config helpers ───────────────────────────────────────────────────────────
 function effective(ctxName) {
   const defs = config.defaults || {};
   const over = (config.clusters || {})[ctxName] || {};
@@ -220,7 +318,7 @@ function collectClusterOverride(ctxName) {
   config.clusters[ctxName] = over;
 }
 
-// ── FQDN auto-discover ──────────────────────────────────────────
+// ── FQDN auto-discover ────────────────────────────────────────────────────
 async function autoDiscoverFqdn(ctxName) {
   try {
     const hosts = await kubeAPI.getIngressHosts(ctxName);
@@ -236,7 +334,7 @@ async function autoDiscoverFqdn(ctxName) {
   } catch (_) { /* silent */ }
 }
 
-// ── Settings panel ──────────────────────────────────────────────
+// ── Settings panel ────────────────────────────────────────────────────────
 function openSettings() {
   settingsOpen = true;
   settingsPanel.classList.add('open');
@@ -250,7 +348,7 @@ function closeSettings() {
   kubeAPI.toggleSettings(false);
 }
 
-// ── Browser navigation ───────────────────────────────────────────
+// ── Browser navigation ─────────────────────────────────────────────────────
 async function navigateTo(rawUrl) {
   let url = rawUrl.trim();
   if (!url) return;
@@ -263,7 +361,7 @@ async function navigateTo(rawUrl) {
   await kubeAPI.showBrowser(true);
 }
 
-// ── Context switching ─────────────────────────────────────────────
+// ── Context switching ─────────────────────────────────────────────────────
 async function switchContext(ctxName) {
   if (ctxName === activeCtx) return;
   await kubeAPI.stopPortForward();
@@ -280,7 +378,7 @@ async function switchContext(ctxName) {
   if (!effective(ctxName).fqdn) autoDiscoverFqdn(ctxName);
 }
 
-// ── Populate context selector ─────────────────────────────────────────
+// ── Populate context selector ───────────────────────────────────────────────
 async function loadContexts() {
   contextSelect.innerHTML = '<option value="">Loading…</option>';
   const ctxs = await kubeAPI.getKubeContexts();
@@ -305,7 +403,7 @@ async function loadContexts() {
   urlBar.value = effective(activeCtx).startUrl || '';
 }
 
-// ── Status update ──────────────────────────────────────────────────
+// ── Status update ──────────────────────────────────────────────────────────
 function applyStatus({ status, message }) {
   statusBadge.className = `status-badge status-${status}`;
   const labels = { stopped: 'Stopped', starting: 'Starting…', running: 'Running', error: 'Error' };
@@ -327,7 +425,7 @@ function applyStatus({ status, message }) {
   if (status === 'error')   { toast(message || 'Port-forward error', 'err'); startBtn.disabled = false; }
 }
 
-// ── Event wiring ──────────────────────────────────────────────────
+// ── Event wiring ────────────────────────────────────────────────────────────
 contextSelect.addEventListener('change', (e) => switchContext(e.target.value));
 refreshCtxBtn.addEventListener('click', loadContexts);
 
@@ -357,7 +455,6 @@ cancelBtn.addEventListener('click', closeSettings);
 themeBtn.addEventListener('click', toggleTheme);
 debugBtn.addEventListener('click', () => debugOpen ? closeDebug() : openDebug());
 closeDebugBtn.addEventListener('click', closeDebug);
-clearLogBtn.addEventListener('click', () => { debugLog.innerHTML = ''; });
 
 browseKubeconfigBtn.addEventListener('click', async () => {
   const p = await kubeAPI.browseKubeconfig();
@@ -447,17 +544,18 @@ fwdBtn.addEventListener('click',   () => kubeAPI.browserForward());
 reloadBtn.addEventListener('click',() => kubeAPI.browserReload());
 extBtn.addEventListener('click',   () => kubeAPI.openExternal(urlBar.value));
 
-// ── IPC listeners ─────────────────────────────────────────────────
-kubeAPI.onPFStatus((data) => applyStatus(data));
+// ── IPC listeners ───────────────────────────────────────────────────────────
+kubeAPI.onPFStatus((data)  => applyStatus(data));
 kubeAPI.onBrowserNav((url) => { urlBar.value = url; });
-kubeAPI.onAppLog((entry) => appendLog(entry));
+kubeAPI.onAppLog((entry)   => appendLog(entry));
 kubeAPI.onPFStats(({ uptime, speedLabel, totalLabel }) => {
   sbUptime.textContent = fmtUptime(uptime);
   sbSpeed.textContent  = speedLabel;
   sbTotal.textContent  = `${totalLabel} total`;
 });
+kubeAPI.onNetRequest((req) => appendNetRequest(req));
 
-// ── Init ────────────────────────────────────────────────────────
+// ── Init ────────────────────────────────────────────────────────────────
 async function init() {
   config    = await kubeAPI.getConfig();
   activeCtx = config.activeCluster;

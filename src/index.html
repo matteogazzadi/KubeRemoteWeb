@@ -40,7 +40,7 @@
     </div>
   </div>
 
-  <!-- ── Browser nav bar ────────────────────────────────────────── -->
+  <!-- ── Browser nav bar ────────────────────────────────────────────── -->
   <div class="navBar">
     <button id="backBtn"    class="nav-btn" title="Back">&#8592;</button>
     <button id="fwdBtn"     class="nav-btn" title="Forward">&#8594;</button>
@@ -50,7 +50,7 @@
     <button id="extBtn"     class="nav-btn" title="Open in system browser">&#8599;</button>
   </div>
 
-  <!-- ── Settings panel ────────────────────────────────────────── -->
+  <!-- ── Settings panel ──────────────────────────────────────────── -->
   <div id="settingsPanel" class="settings-panel">
     <div class="settings-hdr">
       <h2>Settings</h2>
@@ -64,7 +64,7 @@
       <div class="field">
         <div class="input-action">
           <input id="sfKubeconfig" type="text" readonly placeholder="Default (~/.kube/config)" style="cursor:default" />
-          <button id="browseKubeconfigBtn" class="btn btn-ghost">Browse…</button>
+          <button id="browseKubeconfigBtn" class="btn btn-ghost">Browse&hellip;</button>
         </div>
       </div>
       <button id="clearKubeconfigBtn" class="btn btn-ghost" style="font-size:11px;padding:4px 10px;display:none">&#10005; Use default</button>
@@ -159,19 +159,37 @@
     </div>
   </div>
 
-  <!-- ── Debug log panel ────────────────────────────────────────── -->
+  <!-- ── Debug panel ────────────────────────────────────────────── -->
   <div id="debugPanel" class="debug-panel">
     <div class="debug-hdr">
-      <h2>Debug Logs</h2>
+      <div class="debug-tabs">
+        <button id="tabLogs"    class="debug-tab active">Logs</button>
+        <button id="tabNetwork" class="debug-tab">Network</button>
+      </div>
       <div style="display:flex;gap:6px;align-items:center">
         <button id="clearLogBtn" class="btn btn-ghost" style="font-size:11px;padding:4px 10px">Clear</button>
         <button id="closeDebugBtn" class="icon-btn">&#10005;</button>
       </div>
     </div>
+
+    <!-- Logs tab -->
     <div id="debugLog" class="debug-log"></div>
+
+    <!-- Network tab -->
+    <div id="debugNet" class="debug-net hidden">
+      <div class="net-thead">
+        <span class="nc-status">Status</span>
+        <span class="nc-method">Method</span>
+        <span class="nc-type">Type</span>
+        <span class="nc-size">Size</span>
+        <span class="nc-time">Time</span>
+        <span class="nc-url">URL</span>
+      </div>
+      <div id="netRows" class="net-rows"></div>
+    </div>
   </div>
 
-  <!-- ── Empty / welcome state ───────────────────────────────────── -->
+  <!-- ── Empty / welcome state ───────────────────────────────────────── -->
   <div id="emptyState" class="empty-state">
     <div class="empty-content">
       <div class="empty-icon">&#x2388;</div>
@@ -181,7 +199,7 @@
     </div>
   </div>
 
-  <!-- ── Connecting overlay ───────────────────────────────────────── -->
+  <!-- ── Connecting overlay ─────────────────────────────────────────── -->
   <div id="connectingState" class="connecting-state hidden">
     <div class="connecting-content">
       <div class="connecting-icon">&#x2388;</div>
@@ -190,10 +208,10 @@
     </div>
   </div>
 
-  <!-- ── Toast container ─────────────────────────────────────────── -->
+  <!-- ── Toast container ─────────────────────────────────────────────── -->
   <div id="toasts" class="toast-container"></div>
 
-  <!-- ── Bottom status bar ────────────────────────────────────────── -->
+  <!-- ── Bottom status bar ────────────────────────────────────────────── -->
   <div id="statusBar" class="status-bar">
     <div class="sb-item">
       <span id="sbDot" class="sb-dot sb-dot-stopped"></span>

@@ -54,7 +54,7 @@ html, body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* ─── Toolbar ─────────────────────────────────────────────────────────── */
+/* ─── Toolbar ──────────────────────────────────────────────────────────────────── */
 .toolbar {
   height: var(--bar);
   background: var(--bg1);
@@ -120,7 +120,7 @@ html, body {
 .toolbar-pf { display:flex; align-items:center; gap:8px; flex:1; }
 .toolbar-end { display:flex; align-items:center; gap:6px; margin-left:auto; }
 
-/* ─── Buttons ─────────────────────────────────────────────────────────── */
+/* ─── Buttons ──────────────────────────────────────────────────────────────────── */
 .btn {
   cursor: pointer;
   border: none;
@@ -158,7 +158,7 @@ html, body {
 }
 .icon-btn:hover { background: var(--bg3); color: var(--txt); }
 
-/* ─── Status badge ────────────────────────────────────────────────────── */
+/* ─── Status badge ────────────────────────────────────────────────────────────────── */
 .status-badge {
   display: flex;
   align-items: center;
@@ -187,7 +187,7 @@ html, body {
 
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.25} }
 
-/* ─── Nav bar ─────────────────────────────────────────────────────────── */
+/* ─── Nav bar ──────────────────────────────────────────────────────────────────── */
 .navBar {
   height: var(--nav);
   background: var(--bg1);
@@ -230,7 +230,7 @@ html, body {
 .url-bar:focus { border-color: var(--acc); }
 .url-bar::placeholder { color: var(--muted); }
 
-/* ─── Settings panel ──────────────────────────────────────────────────── */
+/* ─── Settings panel ──────────────────────────────────────────────────────────────── */
 .settings-panel {
   position: fixed;
   left: 0;
@@ -342,12 +342,12 @@ html, body {
 
 .settings-actions { display:flex; gap:8px; flex-wrap:wrap; }
 
-/* ─── Debug panel ─────────────────────────────────────────────────────── */
+/* ─── Debug panel ─────────────────────────────────────────────────────────────────── */
 .debug-panel {
   position: fixed;
   right: 0;
   top: var(--top);
-  width: 480px;
+  width: 600px;
   height: calc(100vh - var(--top) - var(--sb));
   background: var(--bg1);
   border-left: 1px solid var(--bdr);
@@ -363,12 +363,35 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 14px;
+  padding: 0 14px;
+  height: 40px;
   border-bottom: 1px solid var(--bdr);
   flex-shrink: 0;
+  gap: 8px;
 }
-.debug-hdr h2 { font-size:14px; font-weight:700; }
 
+/* ─── Debug tabs ───────────────────────────────────────────────────────────────── */
+.debug-tabs {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+.debug-tab {
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: var(--txt2);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 5px;
+  letter-spacing: .2px;
+  transition: background .12s, color .12s;
+}
+.debug-tab:hover  { background: var(--bg3); color: var(--txt); }
+.debug-tab.active { background: var(--accdim); color: var(--acc); }
+
+/* ─── Log view ─────────────────────────────────────────────────────────────────── */
 .debug-log {
   flex: 1;
   overflow-y: auto;
@@ -413,7 +436,89 @@ html, body {
 .log-entry:has(.log-badge-err)  .log-text { color: var(--err); }
 .log-entry:has(.log-badge-warn) .log-text { color: var(--warn); }
 
-/* ─── Empty state ─────────────────────────────────────────────────────── */
+/* ─── Network view ──────────────────────────────────────────────────────────────── */
+.debug-net {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: 'Consolas','Cascadia Code','Monaco',monospace;
+  font-size: 11px;
+}
+.debug-net.hidden { display: none; }
+
+.net-thead {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--bdr);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.net-rows {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* shared column widths */
+.nc-status { width: 44px;  flex-shrink: 0; }
+.nc-method { width: 44px;  flex-shrink: 0; }
+.nc-type   { width: 48px;  flex-shrink: 0; }
+.nc-size   { width: 56px;  flex-shrink: 0; text-align: right; }
+.nc-time   { width: 56px;  flex-shrink: 0; text-align: right; padding-right: 8px; }
+.nc-url    { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.net-row {
+  display: flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-bottom: 1px solid var(--bdr);
+  cursor: pointer;
+  min-height: 22px;
+  transition: background .1s;
+}
+.net-row:hover { background: var(--bg2); }
+.net-row.expanded { flex-wrap: wrap; background: var(--bg2); }
+
+.net-status {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  min-width: 32px;
+  text-align: center;
+}
+.ns-2xx { background: rgba(0,212,161,.15); color: var(--ok); }
+.ns-3xx { background: rgba(108,99,255,.15); color: var(--acc); }
+.ns-4xx { background: rgba(255,209,102,.15); color: var(--warn); }
+.ns-5xx { background: rgba(255,107,107,.15); color: var(--err); }
+.ns-err { background: rgba(255,107,107,.12); color: var(--err); }
+
+.net-method { font-weight: 700; color: var(--acc); font-size: 10px; }
+.net-dim    { color: var(--muted); }
+.net-url    { color: var(--txt2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.net-detail {
+  display: none;
+  width: 100%;
+  padding: 4px 0 2px 0;
+  color: var(--txt2);
+  word-break: break-all;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.net-row.expanded .net-detail { display: block; }
+
+.hidden { display: none !important; }
+
+/* ─── Empty state ─────────────────────────────────────────────────────────────────── */
 .empty-state {
   position: fixed;
   top: var(--top);
@@ -450,7 +555,7 @@ html, body {
   margin-bottom: 8px;
 }
 
-/* ─── Connecting overlay ──────────────────────────────────────────────── */
+/* ─── Connecting overlay ─────────────────────────────────────────────────────────────── */
 .connecting-state {
   position: fixed;
   top: var(--top);
@@ -494,7 +599,7 @@ html, body {
   to   { transform: rotate(360deg); }
 }
 
-/* ─── Toasts ──────────────────────────────────────────────────────────── */
+/* ─── Toasts ──────────────────────────────────────────────────────────────────── */
 .toast-container {
   position: fixed;
   bottom: calc(var(--sb) + 8px);
@@ -525,7 +630,7 @@ html, body {
   to   { transform:translateX(0);    opacity:1; }
 }
 
-/* ─── Status bar ──────────────────────────────────────────────────────── */
+/* ─── Status bar ──────────────────────────────────────────────────────────────────── */
 .status-bar {
   position: fixed;
   bottom: 0; left: 0; right: 0;
@@ -555,7 +660,7 @@ html, body {
 .sb-dot-running  { background: var(--ok); }
 .sb-dot-error    { background: var(--err); }
 
-/* ─── Scrollbar ───────────────────────────────────────────────────────── */
+/* ─── Scrollbar ──────────────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width:5px; }
 ::-webkit-scrollbar-track { background:transparent; }
 ::-webkit-scrollbar-thumb { background:var(--bdr2); border-radius:3px; }
