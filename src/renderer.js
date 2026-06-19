@@ -315,33 +315,35 @@ startBtn.addEventListener('click', async () => {
   if (!activeCtx) { toast('Select a cluster context first', 'err'); return; }
   startBtn.disabled = true;
 
-  // Auto-detect ingress controller unless the user has already overridden it
-  const clusterOverride = (config.clusters || {})[activeCtx] || {};
-  if (!clusterOverride.service && !clusterOverride.namespace) {
+  config.clusters = config.clusters || {};
+  if (!config.clusters[activeCtx]) config.clusters[activeCtx] = {};
+  const cluster = config.clusters[activeCtx];
+
+  // Step 1: ensure ingress controller is known before anything else
+  if (!cluster.service || !cluster.namespace) {
     toast('Detecting ingress controller…');
     const detected = await kubeAPI.autoDetectIngress(activeCtx);
-    if (detected) {
-      config.clusters = config.clusters || {};
-      config.clusters[activeCtx] = { ...clusterOverride, service: detected.service, namespace: detected.namespace };
-      await kubeAPI.saveConfig(config);
-      toast(`Ingress: ${detected.namespace} / ${detected.service.replace('svc/', '')}`, 'ok');
-    } else {
+    if (!detected) {
       noIngressWarning.classList.remove('hidden');
       startBtn.disabled = false;
       return;
     }
+    cluster.service   = detected.service;
+    cluster.namespace = detected.namespace;
+    await kubeAPI.saveConfig(config);
+    toast(`Ingress: ${cluster.namespace} / ${cluster.service.replace('svc/', '')}`, 'ok');
   }
 
-  // Auto-discover FQDN if not already known, then set startUrl in the URL bar
-  const clusterCfg = (config.clusters || {})[activeCtx] || {};
-  if (!clusterCfg.fqdn) {
+  // Step 2: ensure FQDN and startUrl are known before starting the tunnel
+  if (!cluster.fqdn) {
     toast('Detecting FQDN…');
     await autoDiscoverFqdn(activeCtx);
-  } else {
-    urlBar.value = effective(activeCtx).startUrl || urlBar.value;
+    // re-read after save inside autoDiscoverFqdn
   }
+  urlBar.value = effective(activeCtx).startUrl || urlBar.value;
 
-  pendingNavigate = true;
+  // Step 3: start port-forward; navigation fires when status → 'running'
+  pendingNavigate = !!urlBar.value.trim();
   await kubeAPI.startPortForward(activeCtx);
 });
 
