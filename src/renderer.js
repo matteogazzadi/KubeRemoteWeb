@@ -58,6 +58,7 @@ let activeCtx      = null;
 let settingsOpen   = false;
 let debugOpen      = false;
 let browserActive  = false;
+let pendingNavigate = false;  // navigate to startUrl once port-forward reaches 'running'
 let activeDebugTab = 'logs';
 
 function toast(msg, type = '', duration = 3500) {
@@ -232,16 +233,18 @@ function collectClusterOverride(ctxName) {
 async function autoDiscoverFqdn(ctxName) {
   try {
     const hosts = await kubeAPI.getIngressHosts(ctxName);
-    if (!hosts.length) return;
-    const fqdn = hosts[0];
+    if (!hosts.length) return null;
+    const fqdn    = hosts[0];
+    const startUrl = `https://${fqdn}/web-app`;
     if (!config.clusters)          config.clusters          = {};
     if (!config.clusters[ctxName]) config.clusters[ctxName] = {};
     config.clusters[ctxName].fqdn     = fqdn;
-    config.clusters[ctxName].startUrl = `https://${fqdn}/web-app`;
+    config.clusters[ctxName].startUrl = startUrl;
     await kubeAPI.saveConfig(config);
-    urlBar.value = config.clusters[ctxName].startUrl;
+    urlBar.value = startUrl;
     toast(`Auto-detected FQDN: ${fqdn}`, 'ok');
-  } catch (_) {}
+    return startUrl;
+  } catch (_) { return null; }
 }
 
 function openSettings()  { settingsOpen = true;  settingsPanel.classList.add('open');    kubeAPI.toggleSettings(true);  populateSettingsForm(activeCtx); }
@@ -294,8 +297,15 @@ function applyStatus({ status, message }) {
   if (status === 'starting') { connectingMsg.innerHTML = 'Establishing port-forward to cluster.<br>Please wait.'; connectingState.classList.remove('hidden'); emptyState.classList.add('hidden'); }
   else { connectingState.classList.add('hidden'); }
   updateStatusBar(status);
-  if (status === 'running') toast(message || 'Port-forward active', 'ok');
-  if (status === 'error')   { toast(message || 'Port-forward error', 'err'); startBtn.disabled = false; }
+  if (status === 'running') {
+    toast(message || 'Port-forward active', 'ok');
+    if (pendingNavigate) {
+      pendingNavigate = false;
+      const url = urlBar.value.trim();
+      if (url) setTimeout(() => navigateTo(url), 500);
+    }
+  }
+  if (status === 'error') { pendingNavigate = false; toast(message || 'Port-forward error', 'err'); startBtn.disabled = false; }
 }
 
 contextSelect.addEventListener('change', (e) => switchContext(e.target.value));
@@ -322,12 +332,21 @@ startBtn.addEventListener('click', async () => {
     }
   }
 
+  // Auto-discover FQDN if not already known, then set startUrl in the URL bar
+  const clusterCfg = (config.clusters || {})[activeCtx] || {};
+  if (!clusterCfg.fqdn) {
+    toast('Detecting FQDN…');
+    await autoDiscoverFqdn(activeCtx);
+  } else {
+    urlBar.value = effective(activeCtx).startUrl || urlBar.value;
+  }
+
+  pendingNavigate = true;
   await kubeAPI.startPortForward(activeCtx);
-  const eff = effective(activeCtx);
-  if (eff.startUrl) { urlBar.value = eff.startUrl; setTimeout(() => navigateTo(eff.startUrl), 2000); }
 });
 
 stopBtn.addEventListener('click', async () => {
+  pendingNavigate = false;
   await kubeAPI.stopPortForward(); await kubeAPI.showBrowser(false);
   browserActive = false; emptyState.classList.remove('hidden'); connectingState.classList.add('hidden');
 });
