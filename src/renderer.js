@@ -46,6 +46,7 @@ const sbUptime           = document.getElementById('sbUptime');
 const sbSpeed            = document.getElementById('sbSpeed');
 const sbTotal            = document.getElementById('sbTotal');
 const sbCtxName          = document.getElementById('sbCtxName');
+const sbAppVersion       = document.getElementById('sbAppVersion');
 const sfKubeconfig        = document.getElementById('sfKubeconfig');
 const browseKubeconfigBtn = document.getElementById('browseKubeconfigBtn');
 const clearKubeconfigBtn  = document.getElementById('clearKubeconfigBtn');
@@ -433,7 +434,9 @@ async function init() {
   config    = await kubeAPI.getConfig();
   activeCtx = config.activeCluster;
   stopBtn.disabled = true;
-  appVersionEl.textContent = `v${await kubeAPI.getAppVersion()}`;
+  const ver = `v${await kubeAPI.getAppVersion()}`;
+  appVersionEl.textContent = ver;
+  sbAppVersion.textContent  = ver;
   applyTheme(config.theme || 'dark');
   updateStatusBar('stopped');
   sbCtxName.textContent = activeCtx || '—';
