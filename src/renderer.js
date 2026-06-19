@@ -447,6 +447,10 @@ kubeAPI.onPageError(() => {
   connectingState.classList.add('hidden');
   if (browserActive) kubeAPI.showBrowser(true);
 });
+kubeAPI.onKubeconfigChanged(async () => {
+  toast('Kubeconfig changed — refreshing contexts…', 'warn', 4000);
+  await loadContexts();
+});
 
 async function init() {
   config    = await kubeAPI.getConfig();
