@@ -59,7 +59,8 @@ let activeCtx      = null;
 let settingsOpen   = false;
 let debugOpen      = false;
 let browserActive  = false;
-let pendingNavigate = false;  // navigate to startUrl once port-forward reaches 'running'
+let pendingNavigate = false;
+let connectGen     = 0;       // incremented on every new connect attempt or context switch
 let activeDebugTab = 'logs';
 
 function toast(msg, type = '', duration = 3500) {
@@ -266,16 +267,27 @@ async function navigateTo(rawUrl) {
 
 async function switchContext(ctxName) {
   if (ctxName === activeCtx) return;
-  await kubeAPI.stopPortForward();
+  connectGen++;
+  pendingNavigate = false;
+
+  // Immediately reset UI so user can click Start without waiting
+  startBtn.disabled = false;
+  stopBtn.disabled  = true;
+  statusBadge.className = 'status-badge status-stopped';
+  statusText.textContent = 'Stopped';
+  updateStatusBar('stopped');
+  emptyState.classList.remove('hidden');
+  connectingState.classList.add('hidden');
+  noIngressWarning.classList.add('hidden');
+
+  kubeAPI.stopPortForward().catch(() => {});
   activeCtx = ctxName; config.activeCluster = ctxName;
-  await kubeAPI.saveConfig(config);
-  await kubeAPI.showBrowser(false);
+  kubeAPI.saveConfig(config).catch(() => {});
+  kubeAPI.showBrowser(false).catch(() => {});
   browserActive = false;
-  emptyState.classList.remove('hidden'); connectingState.classList.add('hidden'); noIngressWarning.classList.add('hidden');
   urlBar.value = effective(ctxName).startUrl || '';
   sbCtxName.textContent = ctxName;
   toast(`Switched to: ${ctxName}`);
-  if (!effective(ctxName).fqdn) autoDiscoverFqdn(ctxName);
 }
 
 async function loadContexts() {
@@ -316,14 +328,19 @@ startBtn.addEventListener('click', async () => {
   if (!activeCtx) { toast('Select a cluster context first', 'err'); return; }
   startBtn.disabled = true;
 
+  const ctx = activeCtx;
+  const gen = ++connectGen;
+  const stale = () => gen !== connectGen || activeCtx !== ctx;
+
   config.clusters = config.clusters || {};
-  if (!config.clusters[activeCtx]) config.clusters[activeCtx] = {};
-  const cluster = config.clusters[activeCtx];
+  if (!config.clusters[ctx]) config.clusters[ctx] = {};
+  const cluster = config.clusters[ctx];
 
   // Step 1: ensure ingress controller is known before anything else
   if (!cluster.service || !cluster.namespace) {
     toast('Detecting ingress controller…');
-    const detected = await kubeAPI.autoDetectIngress(activeCtx);
+    const detected = await kubeAPI.autoDetectIngress(ctx);
+    if (stale()) return;
     if (!detected) {
       noIngressWarning.classList.remove('hidden');
       startBtn.disabled = false;
@@ -332,20 +349,21 @@ startBtn.addEventListener('click', async () => {
     cluster.service   = detected.service;
     cluster.namespace = detected.namespace;
     await kubeAPI.saveConfig(config);
+    if (stale()) return;
     toast(`Ingress: ${cluster.namespace} / ${cluster.service.replace('svc/', '')}`, 'ok');
   }
 
   // Step 2: ensure FQDN and startUrl are known before starting the tunnel
   if (!cluster.fqdn) {
     toast('Detecting FQDN…');
-    await autoDiscoverFqdn(activeCtx);
-    // re-read after save inside autoDiscoverFqdn
+    await autoDiscoverFqdn(ctx);
+    if (stale()) return;
   }
-  urlBar.value = effective(activeCtx).startUrl || urlBar.value;
+  urlBar.value = effective(ctx).startUrl || urlBar.value;
 
   // Step 3: start port-forward; navigation fires when status → 'running'
   pendingNavigate = !!urlBar.value.trim();
-  await kubeAPI.startPortForward(activeCtx);
+  await kubeAPI.startPortForward(ctx);
 });
 
 stopBtn.addEventListener('click', async () => {
@@ -429,6 +447,10 @@ kubeAPI.onPageError(() => {
   connectingState.classList.add('hidden');
   if (browserActive) kubeAPI.showBrowser(true);
 });
+kubeAPI.onKubeconfigChanged(async () => {
+  toast('Kubeconfig changed — refreshing contexts…', 'warn', 4000);
+  await loadContexts();
+});
 
 async function init() {
   config    = await kubeAPI.getConfig();
@@ -442,7 +464,6 @@ async function init() {
   sbCtxName.textContent = activeCtx || '—';
   (await kubeAPI.getAppLogs()).forEach((e) => appendLog(e));
   await loadContexts();
-  if (activeCtx && !effective(activeCtx).fqdn) autoDiscoverFqdn(activeCtx);
 }
 
 init().catch(console.error);

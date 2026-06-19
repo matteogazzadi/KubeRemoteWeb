@@ -68,6 +68,33 @@ let portForwardStatus  = 'stopped';
 let currentConfig      = initialConfig;
 let settingsOpen       = false;
 let browserVisible     = false;
+let kubeconfigWatcher  = null;
+
+function getKubeconfigPath() {
+  return currentConfig.kubeconfigPath || path.join(os.homedir(), '.kube', 'config');
+}
+
+let kubeconfigChangeTimer = null;
+function onKubeconfigFileChanged() {
+  // Debounce: editors write in multiple steps
+  clearTimeout(kubeconfigChangeTimer);
+  kubeconfigChangeTimer = setTimeout(() => {
+    addLog('info', '[kubeconfig] file changed — refreshing contexts');
+    if (mainWindow && !mainWindow.isDestroyed())
+      mainWindow.webContents.send('kubeconfig-changed');
+  }, 500);
+}
+
+function watchKubeconfig() {
+  if (kubeconfigWatcher) { kubeconfigWatcher.close(); kubeconfigWatcher = null; }
+  const filePath = getKubeconfigPath();
+  try {
+    kubeconfigWatcher = fs.watch(filePath, () => onKubeconfigFileChanged());
+    addLog('info', `[kubeconfig] watching ${filePath}`);
+  } catch (e) {
+    addLog('warn', `[kubeconfig] cannot watch ${filePath}: ${e.message}`);
+  }
+}
 
 const LOG_BUFFER_MAX = 500;
 let logBuffer = [];
@@ -323,7 +350,8 @@ function createWindow() {
   );
 
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
-  mainWindow.on('closed', () => { stopPortForward(); mainWindow = null; });
+  mainWindow.on('closed', () => { stopPortForward(); if (kubeconfigWatcher) { kubeconfigWatcher.close(); kubeconfigWatcher = null; } mainWindow = null; });
+  watchKubeconfig();
   addLog('info', `KubeRemoteWeb v${app.getVersion()} started`);
 
   if (!currentConfig.activeCluster) {
@@ -334,7 +362,12 @@ function createWindow() {
 }
 
 ipcMain.handle('get-config',          ()        => currentConfig);
-ipcMain.handle('save-config',         (_e, cfg) => { currentConfig = cfg; writeConfig(currentConfig); return true; });
+ipcMain.handle('save-config',         (_e, cfg) => {
+  const prevKc = currentConfig.kubeconfigPath;
+  currentConfig = cfg; writeConfig(currentConfig);
+  if (cfg.kubeconfigPath !== prevKc) watchKubeconfig();
+  return true;
+});
 ipcMain.handle('get-kube-contexts',   ()        => getKubeContexts());
 ipcMain.handle('get-current-context', ()        => getCurrentKubeContext());
 ipcMain.handle('get-ingress-hosts',    (_e, ctx) => getIngressHosts(ctx));
