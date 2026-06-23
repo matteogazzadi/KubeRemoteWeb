@@ -6,7 +6,7 @@ const {
   buildHostResolverRules
 } = require('./src/config');
 
-const { app, BrowserWindow, BrowserView, ipcMain, shell, dialog } = require('electron');
+const { app, BrowserWindow, BrowserView, ipcMain, shell, dialog, Menu } = require('electron');
 const { spawn, exec } = require('child_process');
 const { promisify } = require('util');
 const path = require('path');
@@ -510,6 +510,7 @@ ipcMain.handle('browse-kubeconfig', async () => {
   return filePaths[0];
 });
 
+Menu.setApplicationMenu(null);
 app.whenReady().then(createWindow);
 app.on('window-all-closed', () => { stopPortForward(); if (process.platform !== 'darwin') app.quit(); });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
