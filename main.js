@@ -59,6 +59,7 @@ process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true';
 
 const TOOLBAR_HEIGHT = 100;
 const SETTINGS_WIDTH = 400;
+const DEBUG_WIDTH    = 400;
 const STATUS_HEIGHT  = 28;
 const TABBAR_HEIGHT  = 34;
 
@@ -67,6 +68,7 @@ let portForwardProcess = null;
 let portForwardStatus  = 'stopped';
 let currentConfig      = initialConfig;
 let settingsOpen       = false;
+let debugPanelOpen     = false;
 let browserVisible     = false;
 let kubeconfigWatcher  = null;
 
@@ -282,9 +284,10 @@ function updateActiveTabBounds() {
   }
   // Show active tab if browser is visible
   if (browserVisible && activeTabId && tabs.has(activeTabId)) {
-    const bv = tabs.get(activeTabId).browserView;
-    const x  = settingsOpen ? SETTINGS_WIDTH : 0;
-    const bw = settingsOpen ? Math.max(0, w - SETTINGS_WIDTH) : w;
+    const bv  = tabs.get(activeTabId).browserView;
+    const x   = settingsOpen ? SETTINGS_WIDTH : 0;
+    const rhs = debugPanelOpen ? DEBUG_WIDTH : 0;
+    const bw  = Math.max(0, w - x - rhs);
     bv.setBounds({ x, y: TOOLBAR_HEIGHT + TABBAR_HEIGHT, width: bw, height: Math.max(0, h - TOOLBAR_HEIGHT - TABBAR_HEIGHT - STATUS_HEIGHT) });
   }
 }
@@ -481,6 +484,7 @@ ipcMain.handle('browser-reload',  () => {
 });
 ipcMain.handle('show-browser',    (_e, show) => { browserVisible = show; updateActiveTabBounds(); return true; });
 ipcMain.handle('toggle-settings', (_e, open) => { settingsOpen   = open; updateActiveTabBounds(); return true; });
+ipcMain.handle('toggle-debug',    (_e, open) => { debugPanelOpen = open; updateActiveTabBounds(); return true; });
 ipcMain.handle('open-external',   (_e, url)  => shell.openExternal(url));
 ipcMain.handle('relaunch-app',    ()         => { stopPortForward(); app.relaunch(); app.quit(); });
 ipcMain.handle('get-pf-status',   ()         => ({ status: portForwardStatus }));
