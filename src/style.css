@@ -178,7 +178,6 @@ html,body{height:100vh;overflow:hidden;background:var(--bg0);color:var(--txt);fo
   background: var(--bg2);
   border-bottom: 1px solid var(--brd);
   padding: 0 4px;
-  gap: 4px;
   overflow: hidden;
 }
 .tab-list {

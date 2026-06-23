@@ -71,6 +71,7 @@ let activeTabId     = null;
 
 function renderTabs() {
   tabList.innerHTML = '';
+  // button lives inside tabList so it flows after the last tab; re-append it after clearing
   tabs.forEach(tab => {
     const el = document.createElement('div');
     el.className = 'tab-item' + (tab.id === activeTabId ? ' active' : '');
@@ -94,6 +95,7 @@ function renderTabs() {
     });
     tabList.appendChild(el);
   });
+  tabList.appendChild(newTabBtn);
 }
 
 kubeAPI.onTabsState(({ tabs: newTabs, activeTabId: newActiveId }) => {
