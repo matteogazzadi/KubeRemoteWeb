@@ -60,15 +60,19 @@ process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true';
 const TOOLBAR_HEIGHT = 100;
 const SETTINGS_WIDTH = 400;
 const STATUS_HEIGHT  = 28;
+const TABBAR_HEIGHT  = 34;
 
 let mainWindow         = null;
-let browserView        = null;
 let portForwardProcess = null;
 let portForwardStatus  = 'stopped';
 let currentConfig      = initialConfig;
 let settingsOpen       = false;
 let browserVisible     = false;
 let kubeconfigWatcher  = null;
+
+let tabCounter  = 0;
+const tabs      = new Map(); // id -> { browserView, url, title }
+let activeTabId = null;
 
 function getKubeconfigPath() {
   return currentConfig.kubeconfigPath || path.join(os.homedir(), '.kube', 'config');
@@ -263,13 +267,116 @@ function stopPortForward() {
   sendStatus('stopped', 'Port-forward stopped');
 }
 
-function updateBrowserViewBounds() {
-  if (!browserView || !mainWindow || mainWindow.isDestroyed()) return;
+function sendTabsState() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const tabList = [...tabs.entries()].map(([id, t]) => ({ id, url: t.url, title: t.title }));
+  mainWindow.webContents.send('tabs-state', { tabs: tabList, activeTabId });
+}
+
+function updateActiveTabBounds() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
   const [w, h] = mainWindow.getContentSize();
-  if (!browserVisible) { browserView.setBounds({ x: 0, y: TOOLBAR_HEIGHT, width: 0, height: 0 }); return; }
-  const x  = settingsOpen ? SETTINGS_WIDTH : 0;
-  const bw = settingsOpen ? Math.max(0, w - SETTINGS_WIDTH) : w;
-  browserView.setBounds({ x, y: TOOLBAR_HEIGHT, width: bw, height: Math.max(0, h - TOOLBAR_HEIGHT - STATUS_HEIGHT) });
+  // Hide all tabs first
+  for (const [, tab] of tabs) {
+    tab.browserView.setBounds({ x: 0, y: 0, width: 0, height: 0 });
+  }
+  // Show active tab if browser is visible
+  if (browserVisible && activeTabId && tabs.has(activeTabId)) {
+    const bv = tabs.get(activeTabId).browserView;
+    const x  = settingsOpen ? SETTINGS_WIDTH : 0;
+    const bw = settingsOpen ? Math.max(0, w - SETTINGS_WIDTH) : w;
+    bv.setBounds({ x, y: TOOLBAR_HEIGHT + TABBAR_HEIGHT, width: bw, height: Math.max(0, h - TOOLBAR_HEIGHT - TABBAR_HEIGHT - STATUS_HEIGHT) });
+  }
+}
+
+function createTab(url) {
+  const id = ++tabCounter;
+  const bv = new BrowserView({
+    webPreferences: { contextIsolation: true, nodeIntegration: false, allowRunningInsecureContent: true, webSecurity: false }
+  });
+
+  mainWindow.addBrowserView(bv);
+  bv.setBounds({ x: 0, y: 0, width: 0, height: 0 });
+
+  bv.webContents.on('certificate-error', (event, _url, _err, _cert, callback) => {
+    event.preventDefault(); callback(true);
+  });
+
+  bv.webContents.on('did-navigate', (_e, navUrl) => {
+    if (tabs.has(id)) tabs.get(id).url = navUrl;
+    if (id === activeTabId && mainWindow && !mainWindow.isDestroyed())
+      mainWindow.webContents.send('browser-navigated', navUrl);
+    sendTabsState();
+  });
+
+  bv.webContents.on('did-navigate-in-page', (_e, navUrl) => {
+    if (tabs.has(id)) tabs.get(id).url = navUrl;
+    if (id === activeTabId && mainWindow && !mainWindow.isDestroyed())
+      mainWindow.webContents.send('browser-navigated', navUrl);
+    sendTabsState();
+  });
+
+  bv.webContents.on('page-title-updated', (_e, title) => {
+    if (tabs.has(id)) tabs.get(id).title = title;
+    sendTabsState();
+  });
+
+  bv.webContents.on('did-finish-load', () => {
+    if (id === activeTabId && mainWindow && !mainWindow.isDestroyed())
+      mainWindow.webContents.send('browser-page-loaded');
+  });
+
+  bv.webContents.on('did-fail-load', (_e, code, desc) => {
+    if (id === activeTabId && mainWindow && !mainWindow.isDestroyed())
+      mainWindow.webContents.send('browser-page-error', { code, desc });
+  });
+
+  tabs.set(id, { browserView: bv, url: url || '', title: '' });
+
+  if (!activeTabId) {
+    activeTabId = id;
+  }
+
+  if (url) {
+    bv.webContents.loadURL(url);
+    switchTab(id);
+  } else {
+    sendTabsState();
+  }
+
+  return id;
+}
+
+function closeTab(id) {
+  if (!tabs.has(id)) return;
+  if (tabs.size <= 1) return; // Don't close last tab
+
+  const tab = tabs.get(id);
+  mainWindow.removeBrowserView(tab.browserView);
+  tab.browserView.webContents.destroy();
+  tabs.delete(id);
+
+  if (activeTabId === id) {
+    // Switch to another tab
+    const remaining = [...tabs.keys()];
+    activeTabId = remaining[remaining.length - 1];
+    updateActiveTabBounds();
+    const active = tabs.get(activeTabId);
+    if (active && active.url && mainWindow && !mainWindow.isDestroyed())
+      mainWindow.webContents.send('browser-navigated', active.url);
+  }
+
+  sendTabsState();
+}
+
+function switchTab(id) {
+  if (!tabs.has(id)) return;
+  activeTabId = id;
+  updateActiveTabBounds();
+  const tab = tabs.get(id);
+  if (tab.url && mainWindow && !mainWindow.isDestroyed())
+    mainWindow.webContents.send('browser-navigated', tab.url);
+  sendTabsState();
 }
 
 function createWindow() {
@@ -280,37 +387,19 @@ function createWindow() {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false }
   });
 
-  browserView = new BrowserView({
-    webPreferences: { contextIsolation: true, nodeIntegration: false, allowRunningInsecureContent: true, webSecurity: false }
-  });
+  // Create initial tab
+  createTab(null);
 
-  mainWindow.addBrowserView(browserView);
-
-  browserView.webContents.on('certificate-error', (event, _url, _err, _cert, callback) => {
-    event.preventDefault(); callback(true);
-  });
-  browserView.webContents.on('did-navigate', (_e, url) => {
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('browser-navigated', url);
-  });
-  browserView.webContents.on('did-navigate-in-page', (_e, url) => {
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('browser-navigated', url);
-  });
-  browserView.webContents.on('did-finish-load', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('browser-page-loaded');
-  });
-  browserView.webContents.on('did-fail-load', (_e, code, desc) => {
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('browser-page-error', { code, desc });
-  });
-
-  // Track in-flight requests for timing and network monitor
+  // Set up webRequest on the first tab's session
+  const firstTab = tabs.get(activeTabId);
   const pendingRequests = new Map();
 
-  browserView.webContents.session.webRequest.onBeforeRequest((details, callback) => {
+  firstTab.browserView.webContents.session.webRequest.onBeforeRequest((details, callback) => {
     pendingRequests.set(details.id, { ts: Date.now(), method: details.method, url: details.url });
     callback({});
   });
 
-  browserView.webContents.session.webRequest.onCompleted((details) => {
+  firstTab.browserView.webContents.session.webRequest.onCompleted((details) => {
     // Bandwidth accounting
     if (portForwardStatus === 'running') {
       const h  = details.responseHeaders || {};
@@ -332,7 +421,7 @@ function createWindow() {
     }
   });
 
-  browserView.webContents.session.webRequest.onErrorOccurred((details) => {
+  firstTab.browserView.webContents.session.webRequest.onErrorOccurred((details) => {
     const pending  = pendingRequests.get(details.id);
     pendingRequests.delete(details.id);
     const duration = pending ? Date.now() - pending.ts : 0;
@@ -344,9 +433,8 @@ function createWindow() {
     }
   });
 
-  browserView.setBounds({ x: 0, y: TOOLBAR_HEIGHT, width: 0, height: 0 });
   ['resize','maximize','unmaximize','enter-full-screen','leave-full-screen'].forEach(
-    (ev) => mainWindow.on(ev, () => setTimeout(updateBrowserViewBounds, 50))
+    (ev) => mainWindow.on(ev, () => setTimeout(updateActiveTabBounds, 50))
   );
 
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
@@ -374,17 +462,38 @@ ipcMain.handle('get-ingress-hosts',    (_e, ctx) => getIngressHosts(ctx));
 ipcMain.handle('auto-detect-ingress',  (_e, ctx) => autoDetectIngress(ctx));
 ipcMain.handle('start-port-forward',  (_e, ctx) => { startPortForward(ctx); return true; });
 ipcMain.handle('stop-port-forward',   ()        => { stopPortForward(); return true; });
-ipcMain.handle('navigate-browser', (_e, url) => { if (browserView) browserView.webContents.loadURL(url); return true; });
-ipcMain.handle('browser-back',    () => browserView?.webContents.canGoBack()    && browserView.webContents.goBack());
-ipcMain.handle('browser-forward', () => browserView?.webContents.canGoForward() && browserView.webContents.goForward());
-ipcMain.handle('browser-reload',  () => browserView?.webContents.reload());
-ipcMain.handle('show-browser',    (_e, show) => { browserVisible = show; updateBrowserViewBounds(); return true; });
-ipcMain.handle('toggle-settings', (_e, open) => { settingsOpen   = open; updateBrowserViewBounds(); return true; });
+ipcMain.handle('navigate-browser', (_e, url) => {
+  const tab = tabs.get(activeTabId);
+  if (tab) tab.browserView.webContents.loadURL(url);
+  return true;
+});
+ipcMain.handle('browser-back',    () => {
+  const tab = tabs.get(activeTabId);
+  return tab?.browserView.webContents.canGoBack() && tab.browserView.webContents.goBack();
+});
+ipcMain.handle('browser-forward', () => {
+  const tab = tabs.get(activeTabId);
+  return tab?.browserView.webContents.canGoForward() && tab.browserView.webContents.goForward();
+});
+ipcMain.handle('browser-reload',  () => {
+  const tab = tabs.get(activeTabId);
+  return tab?.browserView.webContents.reload();
+});
+ipcMain.handle('show-browser',    (_e, show) => { browserVisible = show; updateActiveTabBounds(); return true; });
+ipcMain.handle('toggle-settings', (_e, open) => { settingsOpen   = open; updateActiveTabBounds(); return true; });
 ipcMain.handle('open-external',   (_e, url)  => shell.openExternal(url));
 ipcMain.handle('relaunch-app',    ()         => { stopPortForward(); app.relaunch(); app.quit(); });
 ipcMain.handle('get-pf-status',   ()         => ({ status: portForwardStatus }));
 ipcMain.handle('get-app-version', ()         => app.getVersion());
 ipcMain.handle('get-app-logs',    ()         => logBuffer);
+
+ipcMain.handle('new-tab',    (_e, url) => createTab(url));
+ipcMain.handle('close-tab',  (_e, id)  => closeTab(id));
+ipcMain.handle('switch-tab', (_e, id)  => switchTab(id));
+ipcMain.handle('get-tabs',   ()        => {
+  const tabList = [...tabs.entries()].map(([id, t]) => ({ id, url: t.url, title: t.title }));
+  return { tabs: tabList, activeTabId };
+});
 
 ipcMain.handle('browse-kubeconfig', async () => {
   if (!mainWindow) return null;
