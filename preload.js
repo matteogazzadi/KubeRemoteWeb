@@ -21,6 +21,10 @@ contextBridge.exposeInMainWorld('kubeAPI', {
   getAppLogs:         ()      => ipcRenderer.invoke('get-app-logs'),
   browseKubeconfig:   ()      => ipcRenderer.invoke('browse-kubeconfig'),
   autoDetectIngress:  (ctx)   => ipcRenderer.invoke('auto-detect-ingress', ctx),
+  newTab:             (url)   => ipcRenderer.invoke('new-tab', url),
+  closeTab:           (id)    => ipcRenderer.invoke('close-tab', id),
+  switchTab:          (id)    => ipcRenderer.invoke('switch-tab', id),
+  getTabs:            ()      => ipcRenderer.invoke('get-tabs'),
 
   onPFStatus:    (cb) => ipcRenderer.on('port-forward-status', (_e, d) => cb(d)),
   onBrowserNav:  (cb) => ipcRenderer.on('browser-navigated',   (_e, u) => cb(u)),
@@ -29,5 +33,6 @@ contextBridge.exposeInMainWorld('kubeAPI', {
   onNetRequest:  (cb) => ipcRenderer.on('net-request',         (_e, r) => cb(r)),
   onPageLoaded:       (cb) => ipcRenderer.on('browser-page-loaded',  (_e)    => cb()),
   onPageError:        (cb) => ipcRenderer.on('browser-page-error',   (_e, e) => cb(e)),
-  onKubeconfigChanged:(cb) => ipcRenderer.on('kubeconfig-changed',   ()      => cb())
+  onKubeconfigChanged:(cb) => ipcRenderer.on('kubeconfig-changed',   ()      => cb()),
+  onTabsState:   (cb) => ipcRenderer.on('tabs-state', (_e, s) => cb(s)),
 });

@@ -53,6 +53,9 @@ const clearKubeconfigBtn  = document.getElementById('clearKubeconfigBtn');
 const noIngressWarning    = document.getElementById('noIngressWarning');
 const noIngressOpenSettings = document.getElementById('noIngressOpenSettings');
 const noIngressDismiss    = document.getElementById('noIngressDismiss');
+const tabBar    = document.getElementById('tabBar');
+const tabList   = document.getElementById('tabList');
+const newTabBtn = document.getElementById('newTabBtn');
 
 let config          = null;
 let activeCtx       = null;
@@ -63,6 +66,43 @@ let pendingNavigate = false;
 let connectGen      = 0;    // incremented on every new connect attempt or context switch
 let connectActive   = false; // true while start handler is in-flight
 let activeDebugTab  = 'logs';
+let tabs            = []; // {id, url, title}
+let activeTabId     = null;
+
+function renderTabs() {
+  tabList.innerHTML = '';
+  tabs.forEach(tab => {
+    const el = document.createElement('div');
+    el.className = 'tab-item' + (tab.id === activeTabId ? ' active' : '');
+    el.dataset.id = tab.id;
+    const title = document.createElement('span');
+    title.className = 'tab-title';
+    title.textContent = tab.title || tab.url || 'New Tab';
+    title.title = tab.url || '';
+    const close = document.createElement('button');
+    close.className = 'tab-close';
+    close.textContent = '×';
+    close.title = 'Close tab';
+    close.addEventListener('click', (e) => {
+      e.stopPropagation();
+      kubeAPI.closeTab(tab.id);
+    });
+    el.appendChild(title);
+    if (tabs.length > 1) el.appendChild(close);
+    el.addEventListener('click', () => {
+      if (tab.id !== activeTabId) kubeAPI.switchTab(tab.id);
+    });
+    tabList.appendChild(el);
+  });
+}
+
+kubeAPI.onTabsState(({ tabs: newTabs, activeTabId: newActiveId }) => {
+  tabs = newTabs;
+  activeTabId = newActiveId;
+  renderTabs();
+  const active = tabs.find(t => t.id === newActiveId);
+  if (active && active.url) urlBar.value = active.url;
+});
 
 function toast(msg, type = '', duration = 3500) {
   const el = document.createElement('div');
@@ -264,6 +304,7 @@ async function navigateTo(rawUrl) {
   await kubeAPI.showBrowser(false);
   await kubeAPI.navigateBrowser(url);
   browserActive = true;
+  tabBar.classList.toggle('hidden', !browserActive);
 }
 
 async function switchContext(ctxName) {
@@ -283,6 +324,7 @@ async function switchContext(ctxName) {
   noIngressWarning.classList.add('hidden');
   kubeAPI.showBrowser(false).catch(() => {});
   browserActive = false;
+  tabBar.classList.toggle('hidden', !browserActive);
 
   // Await stop so main.js processes it before any future startPortForward IPC
   await kubeAPI.stopPortForward().catch(() => {});
@@ -382,7 +424,13 @@ stopBtn.addEventListener('click', async () => {
   pendingNavigate = false;
   connectActive = false;
   await kubeAPI.stopPortForward(); await kubeAPI.showBrowser(false);
-  browserActive = false; emptyState.classList.remove('hidden'); connectingState.classList.add('hidden');
+  browserActive = false; tabBar.classList.toggle('hidden', !browserActive); emptyState.classList.remove('hidden'); connectingState.classList.add('hidden');
+});
+
+newTabBtn.addEventListener('click', () => {
+  if (!browserActive) return;
+  const url = urlBar.value.trim() || '';
+  kubeAPI.newTab(url);
 });
 
 settingsBtn.addEventListener('click', () => settingsOpen ? closeSettings() : openSettings());
