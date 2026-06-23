@@ -203,8 +203,8 @@ clearLogBtn.addEventListener('click', () => {
   if (activeDebugTab === 'network') netRows.innerHTML  = '';
 });
 
-function openDebug()  { debugOpen = true;  debugPanel.classList.add('open'); }
-function closeDebug() { debugOpen = false; debugPanel.classList.remove('open'); }
+function openDebug()  { debugOpen = true;  debugPanel.classList.add('open');    kubeAPI.toggleDebug(true); }
+function closeDebug() { debugOpen = false; debugPanel.classList.remove('open'); kubeAPI.toggleDebug(false); }
 
 function fmtUptime(s) {
   const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;

@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('kubeAPI', {
   browserReload:      ()      => ipcRenderer.invoke('browser-reload'),
   showBrowser:        (show)  => ipcRenderer.invoke('show-browser', show),
   toggleSettings:     (open)  => ipcRenderer.invoke('toggle-settings', open),
+  toggleDebug:        (open)  => ipcRenderer.invoke('toggle-debug', open),
   openExternal:       (url)   => ipcRenderer.invoke('open-external', url),
   relaunchApp:        ()      => ipcRenderer.invoke('relaunch-app'),
   getPFStatus:        ()      => ipcRenderer.invoke('get-pf-status'),
